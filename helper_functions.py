@@ -39,6 +39,16 @@ def edges_to_binary_vector(el, edges):
         
     return(ev)
 
+def edge_to_incidence_vector(e, nodes):
+    nv = np.zeros(len(nodes))
+    
+    ni = nodes.index(e[0])
+    nv[ni] = 1
+    ni = nodes.index(e[1])
+    nv[ni] = -1
+        
+    return(nv)
+
 def binary_vector_to_edges(ev, edges):
     return list(compress(edges, ev))
 
@@ -50,7 +60,7 @@ def sestavi_QBtca(ZK, G, st_alternativ = 4):
     
     for i in range(len(ZK)):
         z,k,_ = ZK[i]
-        X = nx.shortest_simple_paths(G, z, k)
+        X = nx.shortest_simple_paths(G, z, k, weight="t")
         try:
             for counter, path in enumerate(X):
                 col = edges_to_binary_vector(nodes_to_edges_path(path), list(edges))
@@ -79,7 +89,7 @@ def my_nx_draw(G,paths,with_labels = False,with_nodes = True):
     for ci, p in enumerate(paths):
         nx.draw_networkx_edges(G, pos, edgelist=p, edge_color=COLORS[ci], width=2) # highlight elist
 
-def poklici_linprog(ZK,g,edges_mode = False,st_alternativ=5):
+def poklici_linprog(ZK,g,edges_mode = False,st_alternativ=5,integrality=1):
     
     Q,B,t,c,a = sestavi_QBtca(ZK, g, st_alternativ= st_alternativ)
     f = np.dot(t, Q)
@@ -113,34 +123,65 @@ def get_random_ZK(G,num_ZK=2,max_a=2):
                    random.randint(1,max_a)))
     return ZK
 
+def fill_maxspeed(g):
+    for ke in g.edges():
+        e = g.edges()[ke]
+        if "maxspeed" in e.keys():
+            neki = e["maxspeed"]
+            if not isinstance(neki,int):
+                e["maxspeed"] = int(neki) if isinstance(
+                    neki, str) else int(list(neki)[0])
+        else:
+            success = False
+            for ke2 in g.edges():  # if nan set to neighbour
+                if (ke[0] in ke2 or ke[1] in ke2) and ("maxspeed" in g.edges()[ke2].keys()):
+                    neki = g.edges()[ke2]["maxspeed"]
+                    if not isinstance(neki,int):
+                        neki = int(neki) if isinstance(neki, str) else int(list(neki)[0])
+                    if neki != 999:
+                        e["maxspeed"] = neki
+                        success = True
+                        break
+            if not success:
+                e["maxspeed"] = 999
+
+            print(e["highway"], end="")
+            print(" is set to " + str(e["maxspeed"]))
 
 def nastavi_ct(g, c_mode):
     if c_mode == "maxspeed":
-        cs = {}
-        for ke in g.edges():
-            e = g.edges()[ke]
-            if "maxspeed" in e.keys():
-                neki = g.edges()[ke]["maxspeed"]
-                cs[ke] = int(neki) if isinstance(
-                    neki, str) else int(list(neki)[0])
-            else:
-                for ke2 in g.edges():  # if nan set to neighbour
-                    if ke[0] in ke2 or ke[1] in ke2:
-                        if "maxspeed" in g.edges()[ke2].keys():
-                            neki = g.edges()[ke2]["maxspeed"]
-                            cs[ke] = int(neki) if isinstance(
-                                neki, str) else int(list(neki)[0])
-                            g.edges()[ke]["maxspeed"] = str(cs[ke])
-                            break
-                if ke not in cs.keys():
-                    cs[ke] = 999  # if stil set to 999
-
-                print(e["highway"], end="")
-                print(" is set to " + str(cs[ke]))
+        fill_maxspeed(g)
+        maxspeed_to_capacity = lambda maxspeed: int(maxspeed/10)
+        cs = {e : maxspeed_to_capacity(g.edges()[e]["maxspeed"]) for e in g.edges()}
+            
         nx.set_edge_attributes(g, cs, name='c')
         nx.set_edge_attributes(
-            g, {e: g.edges()[e]["length"]/g.edges()[e]["c"] for e in g.edges()}, name='t')
+            g, {e: g.edges()[e]["length"]/g.edges()[e]["maxspeed"] for e in g.edges()}, name='t')
     elif isinstance(c_mode, int):
         nx.set_edge_attributes(g, {e: c_mode for e in g.edges()}, name='c')
         nx.set_edge_attributes(
             g, {e: g.edges()[e]["length"] for e in g.edges()}, name='t')
+
+from scipy.sparse import coo_array
+def sparse_incidence_matrix(nodes, edges, factor = None):
+    nodes = list(nodes)
+    edges = list(edges)
+    row_nodes = []
+    col_edges = []
+    data = []
+    for ei, e in enumerate(edges):
+        if factor is not None:
+            k = factor[ei]
+        else:
+            k = 1
+        ni = nodes.index(e[0])
+        row_nodes.append(ni)
+        col_edges.append(ei)
+        data.append(1*k)
+        ni = nodes.index(e[1])
+        row_nodes.append(ni)
+        col_edges.append(ei)
+        data.append(-1*k)
+
+    coo = coo_array((data, (row_nodes, col_edges)), shape=(len(nodes), len(edges)))
+    return coo
