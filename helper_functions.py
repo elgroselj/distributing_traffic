@@ -89,6 +89,15 @@ def my_nx_draw(G,paths,with_labels = False,with_nodes = True):
     for ci, p in enumerate(paths):
         nx.draw_networkx_edges(G, pos, edgelist=p, edge_color=COLORS[ci], width=2) # highlight elist
 
+def columns_to_paths(g,X,edges_mode=False):
+    paths = []
+    for i in range(X.shape[1]):
+        if edges_mode:
+            paths.append(binary_vector_to_edges(X[:,i],g.edges()))
+        else:
+            paths.append(nodes_to_edges_path( binary_vector_to_edges(X[:,i],g.edges()), inverse=True))
+    return paths
+
 def poklici_linprog(ZK,g,edges_mode = False,st_alternativ=5,integrality=1):
     
     Q,B,t,c,a = sestavi_QBtca(ZK, g, st_alternativ= st_alternativ)
@@ -100,12 +109,7 @@ def poklici_linprog(ZK,g,edges_mode = False,st_alternativ=5,integrality=1):
     #print(res.fun, res.x, res.message)
     print(res.fun, res.x, res.message)
     Q_used = Q[:,res.x > 0] # binarni vektorji uporabljenih poti
-    paths = []
-    for i in range(Q_used.shape[1]):
-        if edges_mode:
-            paths.append(binary_vector_to_edges(Q_used[:,i],g.edges()))
-        else:
-            paths.append(nodes_to_edges_path( binary_vector_to_edges(Q_used[:,i],g.edges()), inverse=True))
+    paths = columns_to_paths(g,Q_used,edges_mode=edges_mode)
     return paths
 
 
@@ -131,6 +135,9 @@ def fill_maxspeed(g):
             if not isinstance(neki,int):
                 e["maxspeed"] = int(neki) if isinstance(
                     neki, str) else int(list(neki)[0])
+            else:
+                print("Maxspeed already fixed.")
+                return
         else:
             success = False
             for ke2 in g.edges():  # if nan set to neighbour
@@ -148,7 +155,34 @@ def fill_maxspeed(g):
             print(e["highway"], end="")
             print(" is set to " + str(e["maxspeed"]))
 
-def nastavi_ct(g, c_mode):
+def nastavi_c(g, c_mode=None, c=None):
+    if c is not None:
+        cs = {e : c[i] for i, e in enumerate(g.edges())}
+    elif c_mode == "maxspeed":
+        fill_maxspeed(g)
+        maxspeed_to_capacity = lambda maxspeed: int(maxspeed/10)
+        cs = {e : maxspeed_to_capacity(g.edges()[e]["maxspeed"]) for e in g.edges()}
+    elif isinstance(c_mode, int):
+        cs = {e: c_mode for e in g.edges()}
+    else:
+        raise Exception("Invalid mode or c missing.")
+    nx.set_edge_attributes(g, cs, name='c')
+
+def nastavi_t(g, t_mode=None, t=None):
+    if t is not None:
+        ts = {e : t[i] for i, e in enumerate(g.edges())}
+    elif t_mode == "length":
+        ts = {e: g.edges()[e]["length"] for e in g.edges()}
+    elif t_mode == "time":
+        fill_maxspeed(g)
+        ts = {e: g.edges()[e]["length"]/g.edges()[e]["maxspeed"] for e in g.edges()}
+    elif isinstance(t_mode, int):
+        ts = {e: t_mode for e in g.edges()}
+    else:
+        raise Exception("Invalid mode or t missing.")
+    nx.set_edge_attributes(g, ts, name='t')
+        
+def nastavi_ct(g, c_mode, c = None, t = None):
     if c_mode == "maxspeed":
         fill_maxspeed(g)
         maxspeed_to_capacity = lambda maxspeed: int(maxspeed/10)
@@ -185,3 +219,59 @@ def sparse_incidence_matrix(nodes, edges, factor = None):
 
     coo = coo_array((data, (row_nodes, col_edges)), shape=(len(nodes), len(edges)))
     return coo
+
+def getB(num_edges, num_ZK, factors = None):
+    B = None
+    row_edge = []
+    col_ZK = []
+    data = []
+    q = 0
+    for i in range(num_edges):
+        for j in range(num_ZK):
+            row_edge.append(i)
+            col_ZK.append(q)
+            if factors is None:
+                data.append(1)
+            else:
+                data.append(factors[i])
+            q += 1
+            
+            
+        # b = np.repeat(np.eye(num_edges,1,-i), num_ZK, axis=1)
+        # B = b if B is None else np.column_stack([B,b])
+    B = coo_array((data, (row_edge, col_ZK)), shape=(num_edges, num_ZK*num_edges))
+    return B
+
+def MtoM2(M,num_ZK):
+    num_nodes, num_edges = M.shape
+    # TODO
+    rows = []
+    cols = []
+    data = []
+    
+    shift = 0
+    for k in range(num_ZK):
+        
+        for n in range(num_nodes):
+            for e in range(num_edges):
+                rows.append(k*num_nodes+n)
+                cols.append(e*num_ZK + shift)
+                data.append(M[n,e])
+        shift += 1
+    coo = coo_array((data, (rows, cols)), shape=(num_ZK*num_nodes, num_ZK*num_edges))
+    return coo
+
+def nastavi_fbcmm(G,ZK,c,t):
+    f = np.repeat(t,len(ZK)) #min f*x
+    
+    B = getB(G.number_of_edges(),len(ZK)) # B*x <= c
+    
+    M = sparse_incidence_matrix(G.nodes(),G.edges()) # (M*X=M_ZK)
+    
+    a = [a for _,_,a in ZK]
+    M_ZK = sparse_incidence_matrix(G.nodes(),[(z,k) for z, k, _ in ZK],factor=a)
+    
+    M2 = MtoM2(M.todense(), len(ZK)) # M2 * x = m_ZK
+    m_ZK = M_ZK.todense().flatten('F')
+    
+    return (f,B,c,M2,m_ZK)
