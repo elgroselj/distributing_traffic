@@ -7,6 +7,8 @@ from scipy.sparse import coo_array
 import osmnx as ox
 import matplotlib.pyplot as plt
 COLORS="brgymcbrgymc"
+from scipy.optimize import minimize
+import time
 
 class Problem():
     def __init__(self, G=None, g=None, ZK=None, ZK_shape=None, ZK_seed = None, c=None, t=None, c_mode=None, t_mode=None):
@@ -146,6 +148,7 @@ class Problem():
 
       
     def nodes_to_edges_path(inp, inverse = False):
+        # TODO to je dela za Q in le po cudezu za X, kaj ce mi ne pokaze vseh poti
         if not inverse:
             nl = inp
             el = []
@@ -207,11 +210,11 @@ class Problem():
         for k in to_draw:
             print(k + ":")
             result = p.results[k]
-            if not result["success"]:
+            if result["paths"] is None:
                 pass
-                print(result["message"])
+                print(result["message"],result["success"])
             else:
-                print(result["fun"],result["message"])
+                print(result["fun"],result["message"],result["success"])
                 if p.G is not None:
                     fig, ax = ox.plot_graph_routes(p.G,result["paths"],route_colors=list(COLORS)[:len(result["paths"])])
                     # for ci, path in enumerate(paths):
@@ -224,7 +227,7 @@ class Problem():
     def print(p):
         for k in p.results:
             print(k + ":")
-            print(p.results[k]["message"], p.results[k]["fun"])
+            print(p.results[k]["message"], p.results[k]["fun"], p.results[k]["success"])
 
 class Linprog_v1():
     def getB(num_edges, num_ZK, factors = None):
@@ -263,7 +266,7 @@ class Linprog_v1():
         csr = coo_array((data, (rows, cols)), shape=(num_ZK*num_nodes, num_ZK*num_edges)).tocsr()
         return csr
     
-    def nastavi_fbcmm(g,ZK,c,t):
+    def nastavi_fbmm(g,ZK,t):
         f = np.repeat(t,len(ZK)) #min f*x
         
         B = Linprog_v1.getB(g.number_of_edges(),len(ZK)) # B*x <= c
@@ -277,17 +280,18 @@ class Linprog_v1():
         #m_ZK = M_ZK.flatten('F')
         m_ZK = M_ZK.reshape((g.number_of_nodes()*len(ZK),1), order='F', copy=False)
         
-        return (f,B,c,M2,m_ZK)
+        return (f,B,M2,m_ZK)
     
     def solve(p,integrality = 1):
-        f,B,c,M2,m_ZK = Linprog_v1.nastavi_fbcmm(p.g,p.ZK,p.c,p.t)
+        f,B,M2,m_ZK = Linprog_v1.nastavi_fbmm(p.g,p.ZK,p.t)
         m_ZK = m_ZK.todense()
-        res = linprog(f, A_ub=B, b_ub=c, A_eq=M2, b_eq=m_ZK, integrality=integrality)
+        res = linprog(f, A_ub=B, b_ub=p.c, A_eq=M2, b_eq=m_ZK, integrality=integrality)
         
         X = None
+        paths = None
         if res.x is not None:
             X = np.array(res.x).reshape(p.g.number_of_edges(),len(p.ZK))
-        paths = Problem.columns_to_paths(p.g,X)
+            paths = Problem.columns_to_paths(p.g,X)
         p.results[str(__class__)] = {"X": X, "fun": res.fun, "message": res.message, "success": res.x is not None, "paths": paths}
 
 class Linprog_v2():
@@ -330,4 +334,215 @@ class Linprog_v2():
         Q_used = Q[:,res.x > 0] # binarni vektorji uporabljenih poti
         paths = Problem.columns_to_paths(p.g,Q_used,edges_mode=False)
         #TODO naredi X iz Q_used (al pa obratno??) Q_used !== X !!!!
-        p.results[str(__class__)] = {"X": Q_used, "fun": res.fun, "message": res.message, "success": res.x is not None, "paths": paths}
+        p.results[str(__class__)+str(st_alternativ)] = {"X": Q_used, "fun": res.fun, "message": res.message, "success": res.x is not None, "paths": paths}
+
+class Linmin():
+    def solve(p,x0_seed=None):
+        t = np.array(p.t).T
+        c = np.array(p.c).T
+        
+        # problematicen je izbor zacetnega priblizka, vecinoma se zatekne v lokalnem minimumu
+        # kako vpeljat da gresta 2 avta po neki poti? TODO
+        # bolj pameten zacetni priblizek
+        num_ZK = len(p.ZK)
+        num_edges = p.g.number_of_edges()
+        
+        # X0 = np.array([[1,0],[0,0],[1,1],[0,1],[0,0],[1,0],[0,1]])
+        # x0 = X0.reshape(-1)
+        x0_seed = x0_seed if x0_seed is not None else time.time()
+        print("x0_seed: "+str(x0_seed))
+        random.seed(x0_seed)
+        x0 = np.random.rand(num_edges * num_ZK) #* max(a)
+        # print(x0)
+        
+        # f,B,M2,m_ZK = Linprog_v1.nastavi_fbmm(p.g,p.ZK,p.t)
+        # m_ZK = m_ZK.todense().reshape(-1)
+        # #res = linprog(f, A_ub=B, b_ub=p.c, A_eq=M2, b_eq=m_ZK, integrality=integrality)
+        # B = B.todense()
+        # M2 = M2.todense()
+        # def fun(x):
+        #     r = np.dot(f,x)
+        #     return r
+
+
+        # constraints = []
+        # constraints =  [{'type': 'ineq', 'fun': lambda x: x}]
+        
+        # def con1(x):
+        #     r = c - np.dot(B,x)
+        #     return r.reshape(-1)
+        # constraints.append({'type': 'ineq', 'fun': con1})
+        
+        # def con2(x):
+        #     r = np.dot(M2,x) - m_ZK
+        #     return r
+        # constraints.append({'type': 'eq', 'fun': con2})        
+        
+        
+        M = Problem.sparse_incidence_matrix(p.g.nodes(),p.g.edges())
+        M_ZK = Problem.sparse_incidence_matrix(p.g.nodes(),[(z,k) for z, k, _ in p.ZK],factor=p.a)
+        
+        def fun(x):
+            X = x.reshape(num_edges,num_ZK)
+            return np.sum(t.T@X)
+
+
+
+        constraints = []
+        constraints =  [{'type': 'ineq', 'fun': lambda x: x}]
+        
+        def con1(x):
+            X = x.reshape(num_edges,num_ZK)
+            unit = np.ones((num_ZK, 1))
+            r = p.c - X@unit
+            return np.repeat(r,x.size//r.size)
+        constraints.append({'type': 'ineq', 'fun': con1})
+        
+        def con2(x):
+            X = x.reshape(num_edges,num_ZK)
+            r = M@X - M_ZK
+            r = r.reshape(-1)
+            return np.repeat(r,x.size//r.size)
+        
+        constraints.append({'type': 'eq', 'fun': con2})
+        print(constraints)
+        res = minimize(fun, x0, method='SLSQP', constraints=constraints, bounds=np.array((np.zeros(x0.size),np.ones(x0.size))).T)
+        if not res.success:
+            # Izpišemo optimalno rešitev
+            # print('(NE)Optimalna rešitev:')
+            # print(res.x, res.fun, res.message, res.success)
+
+            #if res.x is not None:
+            p.results[str(__class__)] = {"X": None, "fun": None, "message": res.message, "success": res.success, "paths": None}
+            
+        else:
+            def smart_round(x):
+                x[x > 0.5] = 1
+                x[x < 0.5] = 0
+                return x
+            
+            round_x = smart_round(res.x)
+            # print(round_x)
+            # print(f(round_x))
+            
+            X = round_x.reshape(num_edges,num_ZK)
+            paths = Problem.columns_to_paths(p.g,X)
+            
+            p.results[str(__class__)] = {"X": X, "fun": fun(round_x), "message": res.message, "success": res.success, "paths": paths}
+
+class Lingen():
+    def get_random_node(nodes):
+            i = random.randint(0, len(nodes)-1)
+            return (i, nodes[i])
+
+    def get_random_path(g,z,k,path_seed=None,excluded_nodes=[]):
+        path_seed = path_seed if path_seed is not None else time.time()
+        #print("path_seed: "+str(path_seed))
+        random.seed(path_seed)
+        
+        nodes_to_use = list(set(g.nodes()) - set(excluded_nodes))
+        sub_g = g.subgraph(nodes_to_use)
+        #while(True):
+        for i in range(100):
+            # print("*",end="")
+            try:
+                _,node = Lingen.get_random_node(nodes_to_use)
+                path1 = nx.shortest_path(sub_g, z, node)
+                path2 = nx.shortest_path(sub_g, node, k)
+            except:
+                continue
+            path = path1+path2[1:]
+            kvazi_path_g = nx.DiGraph(Problem.nodes_to_edges_path(path))
+            path_correct = nx.shortest_path(kvazi_path_g, z, k)
+            # print()
+            return path_correct
+        return None
+        
+    def mutate(g,pop,prob=0.1,path_seed=None):
+        mutated_pop = []
+        
+        for i in range(int(np.ceil(len(pop)*prob))):
+            ex = random.sample(pop,1)[0]
+            col_id = random.randint(0,ex.shape[1]-1)
+            path = Problem.nodes_to_edges_path(Problem.binary_vector_to_edges(ex[:,col_id],g.edges()), inverse=True)
+            meja = random.randint(1,len(path)-1)
+            i1, node1 = Lingen.get_random_node(path[:meja])
+            i2, node2 = Lingen.get_random_node(path[meja:])
+            i2 += meja
+            
+            
+            new_path = Lingen.get_random_path(g,node1,node2,path_seed,excluded_nodes=path[:i1] + path[i2+1:])
+            if new_path is None:
+                print("An alternative path wasn't found.")
+                continue
+            
+            mutated_path = path[:i1] + new_path + path[i2+1:]
+            # print("path: ", path, path[:i1+1], path[i2:])
+            # print("new_path: ", new_path)
+            #print(len(mutated_path) == len(set(mutated_path)))
+                
+                
+            mutated_ex = np.copy(ex)
+            mutated_ex[:,col_id] = Problem.edges_to_binary_vector(Problem.nodes_to_edges_path(mutated_path), list(g.edges()))
+        
+            mutated_pop.append(mutated_ex)
+        
+        return mutated_pop
+    
+    def crossover(pop,prob):
+        crossovered_pop = []
+        for i in range(int(np.ceil(len(pop)*prob))):
+            ex1, ex2 = list(random.sample(pop,2))
+            col_id = random.randint(0,ex1.shape[1]-1)
+            v = ex1[col_id]
+            ex1[col_id] = ex2[col_id]
+            ex2[col_id] = v
+            crossovered_pop += [ex1,ex2]
+            
+        return crossovered_pop
+    
+    
+    
+    def best(pop, f, num):
+        sorted_pop = sorted(pop, key = lambda ex: f(ex))
+        return sorted_pop[:min(num,len(pop))]
+            
+        
+    def solve(p,path_seed=None,num_iter=10):
+        
+        M = Problem.sparse_incidence_matrix(p.g.nodes(),p.g.edges())
+        M_ZK = Problem.sparse_incidence_matrix(p.g.nodes(),[(z,k) for z, k, _ in p.ZK],factor=p.a)
+        M_ZK_dupl = np.repeat(M_ZK.todense(), p.a, axis=1)
+        
+        f_t = lambda ex: np.sum(np.dot(ex.T,p.t))
+        f_c = lambda ex: abs(np.sum(x for x in list(p.c - np.sum(ex, axis=1)) if x < 0))
+            
+        f_sums = lambda ex: abs(np.sum(M@ex - M_ZK_dupl))
+        f = lambda ex: f_t(ex) + 1000 * f_c(ex) + 1000 * f_sums(ex)
+        
+        ex0 = None
+        for z,k,a in p.ZK:
+            #path = nx.shortest_path(p.g, z, k)
+            path = Lingen.get_random_path(p.g, z, k, path_seed)
+            col = Problem.edges_to_binary_vector(Problem.nodes_to_edges_path(path), list(p.g.edges()))
+            for i in range(a):
+                ex0 = col if ex0 is None else np.column_stack([ex0,col])
+        
+        pop = [ex0]
+        
+        for i in range(num_iter):
+            #print(len(pop))
+            
+            mutated_pop = Lingen.mutate(p.g,pop,prob=0.5)
+            # crossovered_pop = Lingen.crossover(pop+mutated_pop,prob=0.1)
+            crossovered_pop = []
+            best_pop = Lingen.best(pop+mutated_pop+crossovered_pop,f,num=10)
+            pop = best_pop
+            
+        best_pop = Lingen.best(pop+mutated_pop+crossovered_pop,f,num=10)
+        best_ex = best_pop[0]
+        paths = Problem.columns_to_paths(p.g,best_ex)
+        print("f_c_sums: ", f_c(best_ex), f_sums(best_ex))
+        p.results[str(__class__)] = {"X": best_ex, "fun": f_t(best_ex), "message": "glej success", "success": f_c(best_ex) + f_sums(best_ex) == 0, "paths": paths}
+        
+        
