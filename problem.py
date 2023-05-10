@@ -157,10 +157,12 @@ class Problem():
             return el
         else:
             el = np.array(inp)
+            print(el)
             
             prvi_mask = ~np.isin(el[:,0], el[:,1]) 
             node = el[:,0][prvi_mask]
             
+            print(node)
             nl = [int(node)]
             for i in range(len(el)):
                 for e in el:
@@ -195,8 +197,19 @@ class Problem():
                 paths.append(Problem.nodes_to_edges_path(Problem.binary_vector_to_edges(X[:,i],g.edges()), inverse=True))
         return paths
     
+    def split_column(col, edges):
+        el = Problem.binary_vector_to_edges(col, edges)
+        # TODO
+    
+    def X_to_Q(g, X):
+        pass # TODO
+        Q = None
+        for i in range(X.shape()[1]):
+            new_cols = Problem.split_column(X[:,i])
+            Q = new_cols if Q is None else np.column_stack([Q,new_cols])
+    
     def my_nx_draw(g,paths,with_labels = False,with_nodes = True):
-        pos = nx.spring_layout(g)
+        pos = nx.circular_layout(g)
         if with_nodes:
             nx.draw_networkx_nodes(g,pos, node_size = 100)
         if with_labels:
@@ -204,23 +217,49 @@ class Problem():
         nx.draw_networkx_edges(g, pos, edge_color='k', width=0.5)
         for ci, p in enumerate(paths):
             nx.draw_networkx_edges(g, pos, edgelist=p, edge_color=COLORS[ci], width=2) # highlight elist
+    
+    def my_nx_draw_pos(G, g,paths, with_labels = False,with_nodes = True, highlight=True):
+        #pos = nx.spring_layout(g)
+        #list(graph.nodes(data = True))[0][1]["x"]
+        plt.figure(figsize=(20,20))
+        pos = {n:(G.nodes[n]["x"],G.nodes[n]["y"]) for n in G.nodes()}
+        if with_nodes:
+            nx.draw_networkx_nodes(g,pos, node_size = 100)
+        if with_labels:
+            nx.draw_networkx_labels(g, pos)
+        nx.draw_networkx_edges(g, pos, edge_color='k', width=0.5)
+        if highlight:
+            for ci, p in enumerate(paths):
+                nx.draw_networkx_edges(g, pos, edgelist=p, edge_color=COLORS[ci], width=2, alpha = 0.5) # highlight elist
+        plt.show()
             
-    def draw(p,method=None):
+    def draw(p,method=None,all_sep=False,directed=False):
         to_draw = p.results if method is None else {method: p.results[method]}
         for k in to_draw:
             print(k + ":")
             result = p.results[k]
-            if result["paths"] is None:
-                pass
+            
+            if False and result["paths"] is None:
                 print(result["message"],result["success"])
             else:
                 print(result["fun"],result["message"],result["success"])
                 if p.G is not None:
-                    fig, ax = ox.plot_graph_routes(p.G,result["paths"],route_colors=list(COLORS)[:len(result["paths"])])
-                    # for ci, path in enumerate(paths):
-                    #     fig, ax = ox.plot_graph_route(graph,path,route_color=COLORS[ci])
+                    if directed:
+                        paths_edges = Problem.columns_to_paths(p.g,result["X"],edges_mode=True)
+                                # Problem.my_nx_draw(p.g,paths_edges,with_labels=True,with_nodes=False)
+                        Problem.my_nx_draw_pos(p.G,p.g,paths_edges,with_labels=False,with_nodes=False)
+                        plt.show()
+                    if result["paths"] is not None:
+                        if len(result["paths"]) == 1:
+                            fig, ax = ox.plot_graph_route(p.G,result["paths"][0],route_color=COLORS[0])
+                        else:
+                            fig, ax = ox.plot_graph_routes(p.G,result["paths"],route_colors=list(COLORS)[:len(result["paths"])])
+                        if all_sep:
+                            for ci, path in enumerate(result["paths"]):
+                                fig, ax = ox.plot_graph_route(p.G,path,route_color=COLORS[ci])
                 else:
                     paths_edges = Problem.columns_to_paths(p.g,result["X"],edges_mode=True)
+                    # Problem.my_nx_draw(p.g,paths_edges,with_labels=True,with_nodes=False)
                     Problem.my_nx_draw(p.g,paths_edges,with_labels=True,with_nodes=False)
                     plt.show()
     
@@ -291,7 +330,7 @@ class Linprog_v1():
         paths = None
         if res.x is not None:
             X = np.array(res.x).reshape(p.g.number_of_edges(),len(p.ZK))
-            paths = Problem.columns_to_paths(p.g,X)
+            #paths = Problem.columns_to_paths(p.g,X) TODO
         p.results[str(__class__)] = {"X": X, "fun": res.fun, "message": res.message, "success": res.x is not None, "paths": paths}
 
 class Linprog_v2():
@@ -484,8 +523,10 @@ class Lingen():
                 
             mutated_ex = np.copy(ex)
             mutated_ex[:,col_id] = Problem.edges_to_binary_vector(Problem.nodes_to_edges_path(mutated_path), list(g.edges()))
-        
-            mutated_pop.append(mutated_ex)
+
+            ids = map(id, pop + mutated_pop)
+            if id(mutated_ex) not in ids:
+                mutated_pop.append(mutated_ex)
         
         return mutated_pop
     
@@ -494,10 +535,15 @@ class Lingen():
         for i in range(int(np.ceil(len(pop)*prob))):
             ex1, ex2 = list(random.sample(pop,2))
             col_id = random.randint(0,ex1.shape[1]-1)
-            v = ex1[col_id]
-            ex1[col_id] = ex2[col_id]
-            ex2[col_id] = v
-            crossovered_pop += [ex1,ex2]
+            v = ex1[:,col_id]
+            ex1[:,col_id] = ex2[:,col_id]
+            ex2[:,col_id] = v
+            
+            ids = map(id, pop + crossovered_pop)
+            if id(ex1) not in ids:
+                crossovered_pop.append(ex1)
+            if id(ex2) not in ids:
+                crossovered_pop.append(ex2)
             
         return crossovered_pop
     
@@ -508,7 +554,7 @@ class Lingen():
         return sorted_pop[:min(num,len(pop))]
             
         
-    def solve(p,path_seed=None,num_iter=10):
+    def solve(p,path_seed=None,num_iter=10,num_best=10,mutation_prob=0.5,crossover_prob=0.1):
         
         M = Problem.sparse_incidence_matrix(p.g.nodes(),p.g.edges())
         M_ZK = Problem.sparse_incidence_matrix(p.g.nodes(),[(z,k) for z, k, _ in p.ZK],factor=p.a)
@@ -533,16 +579,56 @@ class Lingen():
         for i in range(num_iter):
             #print(len(pop))
             
-            mutated_pop = Lingen.mutate(p.g,pop,prob=0.5)
-            # crossovered_pop = Lingen.crossover(pop+mutated_pop,prob=0.1)
+            mutated_pop = Lingen.mutate(p.g,pop,prob=mutation_prob)
+            
             crossovered_pop = []
-            best_pop = Lingen.best(pop+mutated_pop+crossovered_pop,f,num=10)
+            crossovered_pop = Lingen.crossover(pop+mutated_pop,prob=crossover_prob)
+            
+            best_pop = Lingen.best(pop+mutated_pop+crossovered_pop,f,num=num_best)
             pop = best_pop
             
-        best_pop = Lingen.best(pop+mutated_pop+crossovered_pop,f,num=10)
+        best_pop = Lingen.best(pop+mutated_pop+crossovered_pop,f,num=1)
         best_ex = best_pop[0]
         paths = Problem.columns_to_paths(p.g,best_ex)
         print("f_c_sums: ", f_c(best_ex), f_sums(best_ex))
         p.results[str(__class__)] = {"X": best_ex, "fun": f_t(best_ex), "message": "glej success", "success": f_c(best_ex) + f_sums(best_ex) == 0, "paths": paths}
+
+class Greedy():
+    def update_path(paths, generators, path_ind):
+        paths[path_ind] = next(generators[path_ind])
+
+
+    def solve(p, max_num_iter = 10):
+        generators = []
+        for z,k,a in p.ZK:
+            for i in range(a):
+                generator = nx.shortest_simple_paths(p.g, z, k, weight="t")
+                generators.append(generator)
         
+        paths = [None] * len(generators) # init
+        
+        paths_to_update = list(range(0,len(generators))) # update all
+        
+        st = 0
+        while len(paths_to_update) > 0 and st < max_num_iter:
+            for path_ind in paths_to_update:
+                Greedy.update_path(paths, generators, path_ind)
+                
+            Q = None
+            for path in paths:
+                col = Problem.edges_to_binary_vector(Problem.nodes_to_edges_path(path), list(p.g.edges()))
+                Q = col if Q is None else np.column_stack([Q,col])
+                
+            Q = Q.reshape((p.g.number_of_edges(), -1))
+            edges_to_unload = np.where(np.sum(Q,axis=1) > p.c)[0]
+            paths_in_jam = np.where(np.sum(Q[edges_to_unload,:], axis=0) > 0)[0]
+            paths_to_update = [paths_in_jam[0]] if len(paths_in_jam) > 0 else [] # one per step
+            
+            st += 1
+        
+        f_t = lambda Q: np.sum(np.dot(Q.T,p.t))
+        
+        f_t(Q)
+        p.results[str(__class__)] = {"X": Q, "fun": f_t(Q), "message": "glej success", "success": st < max_num_iter, "paths": paths}
+
         
