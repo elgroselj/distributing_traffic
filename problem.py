@@ -157,12 +157,13 @@ class Problem():
             return el
         else:
             el = np.array(inp)
-            print(el)
+            #print(el)
             
             prvi_mask = ~np.isin(el[:,0], el[:,1]) 
             node = el[:,0][prvi_mask]
             
-            print(node)
+            
+            #print(node)
             nl = [int(node)]
             for i in range(len(el)):
                 for e in el:
