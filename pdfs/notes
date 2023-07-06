@@ -1,0 +1,8 @@
+CELOŠTEVILSKO PROGRAMIRNJE
+nekatere ali vse spremenljivke so celoštevilske (če katere niso imamo mešan celoštevilski program)
+CP je linaren, če so linearne tako omejitve kot kriterijska funkcija
+je NP-complete: 0-1 celoštevilski program je eden od KARPovih 21 NP-complete problemov
+
+LAGRANGEOVA RELAKSACIJA
+izkoristimo strukturo problema
+Geoffrion jo uporabi na razveji in omeji 
