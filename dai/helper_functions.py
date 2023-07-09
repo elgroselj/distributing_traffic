@@ -30,3 +30,12 @@ def plot_multigraph(graph, with_labels=False):
 
     plt.axis('off')
     plt.show()
+
+def plot_solution_graph(graph,X):
+    multi = nx.MultiDiGraph(graph)
+    for k in range(X.shape[1]):
+        
+        path = [e for i,e in enumerate(graph.edges) if X[i,k] != 0]
+        multi.add_edges_from(path, color=COLORS[k])
+    # print(list(multi.edges()))
+    plot_multigraph(multi)
