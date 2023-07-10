@@ -4,7 +4,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 COLORS = "brgpy"
 
-def plot_multigraph(graph, with_labels=False):
+def plot_multigraph(graph, with_labels=True):
     G = nx.MultiDiGraph(graph)
     pos = nx.circular_layout(G)
     nx.draw_networkx_nodes(G, pos, node_size=100, alpha=1)
@@ -31,11 +31,12 @@ def plot_multigraph(graph, with_labels=False):
     plt.axis('off')
     plt.show()
 
-def plot_solution_graph(graph,X):
+def plot_solution_graph(graph,X,with_labels=True):
     multi = nx.MultiDiGraph(graph)
+    print("k\tCOLOR")
     for k in range(X.shape[1]):
-        
         path = [e for i,e in enumerate(graph.edges) if X[i,k] != 0]
         multi.add_edges_from(path, color=COLORS[k])
+        print(k,"\t",COLORS[k])
     # print(list(multi.edges()))
-    plot_multigraph(multi)
+    plot_multigraph(multi,with_labels=with_labels)
