@@ -2,6 +2,7 @@ import cvxpy as cp
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
+from node import Node 
 COLORS = "brgpy"
 
 def plot_multigraph(graph, with_labels=True):
@@ -40,3 +41,135 @@ def plot_solution_graph(graph,X,with_labels=True):
         print(k,"\t",COLORS[k])
     # print(list(multi.edges()))
     plot_multigraph(multi,with_labels=with_labels)
+
+def init_from_graph(graph,demands): # TODO caps floor to int, costs fractional to int najmanjši skupni večkratnik imenovalcev
+    # razberem dimenzije
+    n = len(graph.nodes()) # 6 # |V|
+    m = len(graph.edges()) # 10 # |E|
+    t = len(demands) # 3
+    
+    vp = {} # slovar spremenljivk in parametrov
+    
+    # spremenljivke
+    vp["X"] = cp.Variable((m,t),integer=True)
+
+    # parametri
+    vp["c"] = cp.Parameter(m, integer=True)
+    vp["cap"] = cp.Parameter(m, integer = True)
+    vp["B"] = cp.Parameter((n,m), integer = True)
+    vp["H"] = cp.Parameter((n,t), integer= True)
+    vp["lam"] = cp.Parameter(m, nonneg=True)
+
+    # dolocim vrednosti parametrom
+    vp["c"].value = np.array([data["c"] for _,_, data in graph.edges(data=True)])
+    vp["cap"].value = np.array([data["cap"] for _,_, data in graph.edges(data=True)])
+    print(vp["c"].value)
+    print(vp["cap"].value)
+    vp["B"].value = -1 * np.array(nx.incidence_matrix(graph,oriented=True).todense())
+    def demands_to_matrix(demands,n):
+        H = np.zeros((n,len(demands)))
+        for k,(Ok,Dk,d) in enumerate(demands):
+            H[Ok,k] = d
+            H[Dk,k] = -d
+        return H      
+    # vp["H"].value = np.array([[1, 3, 2],
+    #                     [0, 0, 0],
+    #                     [0, 0, 0],
+    #                     [-1, 0, 0],
+    #                     [0, -3, 0],
+    #                     [0, 0, -2]
+    #                     ])
+    vp["H"].value = demands_to_matrix(demands,n)
+    print(vp["H"].value)
+    vp["lam"].value = np.zeros(m)
+
+
+
+    # kriterijska funkcija
+    obj = cp.Minimize(vp["c"].T @ cp.sum(vp["X"],axis=1) + vp["lam"] @ (cp.sum(vp["X"],axis=1) - vp["cap"]))
+
+    # omejitve
+    constraints = [
+        vp["B"] @ vp["X"] == vp["H"],
+        vp["X"] >= 0   
+    ]
+
+    # prob = cp.Problem(obj, constraints)
+    # # print(prob.is_dpp()) TODO
+    return (obj, constraints, vp)
+
+
+def run(obj,constraints,vp,graph,MAX_ITER,INIT_NUM_STEPS):
+    Node.label = 0
+    Node.INIT_NUM_STEPS = INIT_NUM_STEPS
+    n1 = Node(obj,constraints,vp)
+    L = [n1]
+
+    n_best = None
+    UB = np.inf # celostevilski
+    
+    q = 0
+    while len(L) > 0:
+        
+        # prednost imajo otroci staršev z cap_ok == True
+        n = None
+        for n2 in L:
+            if n2.parent is not None and "cap_ok" in n2.parent.sol and n2.parent.sol["cap_ok"]:
+                n = n2
+                L.remove(n2)
+                break
+        if n is None:
+            n = L.pop(0)
+
+        n.solve(UB)
+        
+        # print(n.sol["status"])
+        if n.sol["status"] == "infeasible":
+            continue
+        
+        # zLD = n.sol["zLD"] # optimistična hevristika
+        zLD_ceil = n.sol["zLD_ceil"] # zaokrožimo BŠS, dobimo bolj tesno mejo
+        
+        z = n.sol["z"]
+        
+        if z > UB: # ta veja bo samo še slabša (dražja)
+            n.sol["status"] += " COST too large("+str(UB)+")"
+            continue
+        
+        if n.sol["cap_ok"]: # dopustna za prvotni CLP
+            if z < UB:
+                UB = z
+                # X_best = n.sol["X"]
+                n_best = n
+                # LB_best = zLD_ceil
+            n.sol["status"] += " FEASIBLE for I"
+            if z == zLD_ceil:
+                n.sol["status"] += " OPTIMAL for I"
+                continue
+        
+        ch = n.get_children()
+        L += ch
+        q += 1
+        if q >= MAX_ITER: break
+
+
+    if len(L) == 0: print("VSE PREISKANO")
+    print(n1)
+    if n_best is not None:
+        print(repr(n_best))
+        print(repr(n_best.sol["X"]))
+        plot_solution_graph(graph,n_best.sol["X"])
+        
+    # try:        
+        
+    #     print(n_best.sol["status"],": ", UB)
+    #     print(repr(X_best))
+    #     print("LB_best: ", LB_best)
+    #     print(np.sum(X_best,axis=1) <= vp["cap"].value)
+    #     print(vp["c"].value.T @ np.sum(X_best,axis=1))
+    # except: pass
+
+
+    # TODO bug ko "vse preiskano" pa ni optimalne rešitve
+    return n_best # TODO podati oceno koliko je še lufta do optimuma
+
