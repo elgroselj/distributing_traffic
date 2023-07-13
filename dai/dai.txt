@@ -1,0 +1,33 @@
+Initialize: 
+q = 0 # initial number of iteration
+flag = 0
+betha = 1
+q_max = 0, # max number of iteration is q_max.
+UB = np.inf
+LB = -np.inf  # initial upper bound and lower bound 
+eps = 10**5, 
+while q <= q_max and betha > eps:
+    solve LR : X*,L(lam)
+    if X* is feasible:
+        UB = z(X*) # celoštevilska
+    endif
+    if L(lam) < LB:
+        flag = 3
+    else:
+        if L(lam) - LB < eps x max(1,LB)
+            flag = flag + 1
+        endif
+        if L(lam) > LB:
+            LB = L(lam)
+            X** = X*
+        endif
+    endif
+    if flag > 2:
+        betha = betha/2
+        flag = 0
+    endif
+   
+    alpha = betha(UB - L(lam)) / norm((sum X*_k) - cap)
+    lam = [lam + alpha((sum X*_k) - cap)]+
+endwhile
+Output: The optimal solution for original MCFP is LB

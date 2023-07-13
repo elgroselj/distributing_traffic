@@ -23,15 +23,20 @@ class Node:
     
         
     
-    def solve(self,UB):
+    def solve(self,UB,lam0 = None):
         sol = {"zLD":-np.inf,"status":None,"X":None,"lam":None}
         no_change_counter = 0
         betha = 2
-        # self.vp["lam"].value = np.zeros(self.vp["lam"].value.shape)
+        if lam0 is None:
+            self.vp["lam"].value = np.zeros(self.vp["lam"].value.shape)
+        else:
+            self.vp["lam"].value = lam0
         
         tt_init = Node.INIT_NUM_STEPS #100 # pomenbno je, da dobro skonvergiramo na začetku TODO analiziraj obnašanje
         tt = max(20,int(tt_init/(self.level+1)))
         print(tt)
+        
+        values = []
         for t in range(tt):
             # print(t,":")
             # rešimo LD pri neki lambdi
@@ -53,7 +58,8 @@ class Node:
             # zapomnimo si najtesnejšo (najvišjo) rešitev LD
             if self.problem.value > sol["zLD"]:
                 sol = {"zLD":self.problem.value,"status":self.problem.status,"X":self.vp["X"].value,"lam":self.vp["lam"].value}
-                
+            
+            values.append(self.problem.value)
             # if self.problem.value == sol["zLD"]:
             #     no_change_counter += 1
             #     if no_change_counter > 3:
@@ -117,6 +123,8 @@ class Node:
         sol["zLD_ceil"] = np.ceil(sol["zLD"])
         
         self.sol = sol
+        
+        return values
 
     
     def get_children(self):

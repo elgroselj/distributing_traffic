@@ -5,11 +5,15 @@ import matplotlib.pyplot as plt
 from node import Node 
 COLORS = "brgpy"
 
-def plot_multigraph(graph, with_labels=True):
+def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20)):
+    plt.figure(figsize=figure_size)
     G = nx.MultiDiGraph(graph)
-    pos = nx.circular_layout(G)
-    nx.draw_networkx_nodes(G, pos, node_size=100, alpha=1)
-    nx.draw_networkx_labels(G, pos)
+    try:
+        pos = {n:(G.nodes[n]["x"],G.nodes[n]["y"]) for n in G.nodes()}
+    except:
+        pos = nx.circular_layout(G)
+    nx.draw_networkx_nodes(G, pos, node_size=0, alpha=1)
+    nx.draw_networkx_labels(G, pos, font_size=font_size)
     ax = plt.gca()
     for e in G.edges:
         edge_color = G.edges[e]["color"] if "color" in G.edges[e] else "k"
@@ -26,13 +30,14 @@ def plot_multigraph(graph, with_labels=True):
     if with_labels:
         digraph = nx.DiGraph(G)
         nx.draw_networkx_edge_labels(digraph, pos,
-                                     edge_labels={e: "{},{}".format(digraph.edges[e]["c"], digraph.edges[e]["cap"])
-                                                  for e in list(digraph.edges)})
+                                     edge_labels={e: "{},{}".format(int(np.round(digraph.edges[e]["c"])), int(np.floor(digraph.edges[e]["cap"])))
+                                                  for e in list(digraph.edges)},
+                                     font_size=font_size)
 
     plt.axis('off')
     plt.show()
 
-def plot_solution_graph(graph,X,with_labels=True):
+def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20)):
     multi = nx.MultiDiGraph(graph)
     print("k\tCOLOR")
     for k in range(X.shape[1]):
@@ -40,9 +45,9 @@ def plot_solution_graph(graph,X,with_labels=True):
         multi.add_edges_from(path, color=COLORS[k])
         print(k,"\t",COLORS[k])
     # print(list(multi.edges()))
-    plot_multigraph(multi,with_labels=with_labels)
+    plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size)
 
-def init_from_graph(graph,demands): # TODO caps floor to int, costs fractional to int najmanjši skupni večkratnik imenovalcev
+def init_from_graph(graph,demands):
     # razberem dimenzije
     n = len(graph.nodes()) # 6 # |V|
     m = len(graph.edges()) # 10 # |E|
@@ -61,8 +66,8 @@ def init_from_graph(graph,demands): # TODO caps floor to int, costs fractional t
     vp["lam"] = cp.Parameter(m, nonneg=True)
 
     # dolocim vrednosti parametrom
-    vp["c"].value = np.array([data["c"] for _,_, data in graph.edges(data=True)])
-    vp["cap"].value = np.array([data["cap"] for _,_, data in graph.edges(data=True)])
+    vp["c"].value = np.round(np.array([data["c"] for _,_, data in graph.edges(data=True)])) # BŠS
+    vp["cap"].value = np.floor(np.array([data["cap"] for _,_, data in graph.edges(data=True)])) # caps floor to int
     print(vp["c"].value)
     print(vp["cap"].value)
     vp["B"].value = -1 * np.array(nx.incidence_matrix(graph,oriented=True).todense())
@@ -121,7 +126,11 @@ def run(obj,constraints,vp,graph,MAX_ITER,INIT_NUM_STEPS):
         if n is None:
             n = L.pop(0)
 
-        n.solve(UB)
+        values = n.solve(UB)
+        try:
+            plt.plot(values)
+        except:
+            pass
         
         # print(n.sol["status"])
         if n.sol["status"] == "infeasible":
@@ -158,7 +167,6 @@ def run(obj,constraints,vp,graph,MAX_ITER,INIT_NUM_STEPS):
     if n_best is not None:
         print(repr(n_best))
         print(repr(n_best.sol["X"]))
-        plot_solution_graph(graph,n_best.sol["X"])
         
     # try:        
         
@@ -173,3 +181,79 @@ def run(obj,constraints,vp,graph,MAX_ITER,INIT_NUM_STEPS):
     # TODO bug ko "vse preiskano" pa ni optimalne rešitve
     return n_best # TODO podati oceno koliko je še lufta do optimuma
 
+# def run2(obj,constraints,vp,MAX_ITER):
+#     q = 0 # initial number of iteration
+#     flag = 0
+#     betha = 2
+#     q_max = MAX_ITER # max number of iteration is q_max.
+#     UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
+#     LB = -np.inf  # initial upper bound and lower bound 
+#     eps = 10**(-7)
+    
+#     UB_min = UB
+#     X_best = None
+    
+#     problem = cp.Problem(obj, constraints)
+    
+#     # Node.label = 0
+#     # Node.INIT_NUM_STEPS = INIT_NUM_STEPS
+#     # n = Node(obj,constraints,vp)
+#     while q <= q_max and betha > eps:
+#         problem.solve()
+#         X = vp["X"].value
+#         zLD = problem.value
+#         if np.all(np.sum(X,axis=1) <= vp["cap"].value):#X* is feasible:
+#             UB = vp["c"].value.T @ np.sum(X,axis=1) # z
+#             if UB < UB_min:
+#                 UB_min = UB
+#                 X_best = X
+                
+#         if zLD < LB:
+#             flag = 3
+#         else:
+#             if zLD - LB < eps * max(1,LB):
+#                 flag = flag + 1
+#             if zLD > LB:
+#                 LB = zLD
+                
+#         if flag > 2:
+#             betha = betha/2
+#             flag = 0
+
+#         s = vp["cap"].value - np.sum(vp["X"].value,axis=1)
+#         alpha = betha * (UB - zLD)/np.linalg.norm(s)
+#         ll = vp["lam"].value - s * alpha
+#         ll[ll < 0] = 0 # lambda ne mora biti negativna
+#         vp["lam"].value = ll
+#         q = q + 1
+#     print(q,betha)
+#     return (LB,UB,X_best)
+    
+
+def fill_maxspeed(g):
+    for ke in g.edges():
+        e = g.edges()[ke]
+        if "maxspeed" in e.keys():
+            neki = e["maxspeed"]
+            if not isinstance(neki,int):
+                e["maxspeed"] = int(neki) if isinstance(
+                    neki, str) else int(list(neki)[0])
+            else:
+                print("Maxspeed already fixed.")
+                return
+        else:
+            success = False
+            for ke2 in g.edges():  # if nan set to neighbour
+                if (ke[0] in ke2 or ke[1] in ke2) and ("maxspeed" in g.edges()[ke2].keys()):
+                    neki = g.edges()[ke2]["maxspeed"]
+                    if not isinstance(neki,int):
+                        neki = int(neki) if isinstance(neki, str) else int(list(neki)[0])
+                    if neki != 999:
+                        e["maxspeed"] = neki
+                        success = True
+                        break
+            if not success:
+                e["maxspeed"] = 999
+
+            print(e["highway"], end="")
+            print(" is set to " + str(e["maxspeed"]))
