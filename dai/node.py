@@ -1,4 +1,5 @@
 import cvxpy as cp
+from matplotlib import pyplot as plt
 import numpy as np
 import random
 
@@ -6,6 +7,7 @@ class Node:
     EPSI = 10e-11
     INIT_NUM_STEPS = 100
     label = 0
+    label_solved = 0
     def __init__(self, obj, constraints, vp, level = 0, parent = None, branchingTF = None):
         self.problem = cp.Problem(obj, constraints)
         self.vp = vp
@@ -16,6 +18,8 @@ class Node:
         self.label = Node.label
         Node.label += 1
         
+        self.label_solved = None
+        
         self.parent = parent
         
         # self.branches = branches
@@ -24,7 +28,10 @@ class Node:
         
     
     def solve(self,UB,lam0 = None):
-        sol = {"zLD":-np.inf,"status":None,"X":None,"lam":None}
+        self.label_solved = Node.label_solved
+        Node.label_solved += 1
+        
+        sol = {"zLD":-np.inf,"status":None,"X":None,"lam":None,"cap_ok":False}
         no_change_counter = 0
         betha = 2
         if lam0 is None:
@@ -125,6 +132,81 @@ class Node:
         self.sol = sol
         
         return values
+    
+    # def solve(self,LB_,UB_,lam0 = None,MAX_ITER_LR=100):
+    #     self.label_solved = Node.label_solved
+    #     Node.label_solved += 1
+        
+    #     sol = {"zLD":-np.inf,"status":None,"X":None,"lam":None,"cap_ok":False}
+        
+    #     if lam0 is None:
+    #         self.vp["lam"].value = np.zeros(self.vp["lam"].value.shape)
+    #     else:
+    #         self.vp["lam"].value = lam0
+        
+    #     q = 0 # initial number of iteration
+    #     flag = 0
+    #     betha = 2
+    #     q_max = MAX_ITER_LR # max number of iteration is q_max.
+    #     LB = LB_
+    #     UB = UB_
+    #     # UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
+    #     # LB = -np.inf  # initial upper bound and lower bound 
+    #     eps = 10**(-11)
+        
+    #     UB_min = UB
+    #     X_best = None
+        
+    #     # problem = cp.Problem(obj, constraints)
+        
+    #     # Node.label = 0
+    #     # Node.INIT_NUM_STEPS = INIT_NUM_STEPS
+    #     # n = Node(obj,constraints,vp)
+    #     values = []
+    #     while q <= q_max and betha > eps:
+    #         self.problem.solve()
+    #         X = self.vp["X"].value
+    #         zLD = self.problem.value
+    #         values.append(zLD)
+    #         if np.all(np.sum(X,axis=1) <= self.vp["cap"].value):#X* is feasible:
+    #             UB = self.vp["c"].value.T @ np.sum(X,axis=1) # z
+    #             if UB < UB_min:
+    #                 UB_min = UB
+    #                 sol["X"] = X
+                    
+    #         if zLD < LB:
+    #             flag = 3
+    #         else:
+    #             if zLD - LB < eps * max(1,LB):
+    #                 flag = flag + 1
+    #             if zLD > LB:
+    #                 LB = zLD
+                    
+    #         if flag > 2:
+    #             betha = betha/2
+    #             flag = 0
+
+    #         s = self.vp["cap"].value - np.sum(self.vp["X"].value,axis=1)
+    #         alpha = betha * (UB - zLD)/np.linalg.norm(s)
+    #         ll = self.vp["lam"].value - s * alpha
+    #         ll[ll < 0] = 0 # lambda ne mora biti negativna
+    #         self.vp["lam"].value = ll
+    #         q = q + 1
+    #     print(q,betha)
+        
+    #     sol["s"] = self.vp["cap"].value - np.sum(sol["X"],axis=1)
+    #     sol["z"] = UB # self.vp["c"].value.T @ np.sum(sol["X"],axis=1)
+    #     sol["cap_ok"] = np.all(np.sum(sol["X"],axis=1) <= self.vp["cap"].value)
+    #     sol["zLD_ceil"] = LB # np.ceil(sol["zLD"])
+        
+    #     self.sol = sol
+        
+    #     return values
+    
+    
+    
+    
+
 
     
     def get_children(self):
@@ -202,9 +284,12 @@ class Node:
     
     def __repr__(self):
         if self.sol is None: return str(self.label) +": not available"
-        if self.sol["status"] == "infeasible": return str(self.label) +": "+ self.sol["status"]
-        stri = str(self.label) +": "+ self.sol["status"]+" z: "+ str(self.sol["z"])+" zLD: "+ str(self.sol["zLD"]) +"("+str(self.sol["zLD_ceil"])+")"+ " cap_ok = " + str(self.sol["cap_ok"])
+        else: stri =  str(self.label) + " / " + str(self.label_solved)
+        
+        if self.sol["status"] == "infeasible": return stri +": "+ self.sol["status"]
+        stri = (stri +": "+ self.sol["status"]+" z: "+ str(self.sol["z"])+" zLD: "+ # str(self.sol["zLD"]) +
+            "("+str(self.sol["zLD_ceil"])+")"+ " cap_ok = " + str(self.sol["cap_ok"]))
         # if "vejanje" in self.sol: stri += " " + repr(self.sol["vejanje"]) + " "
         if self.children is not None: stri += " " + repr(self.children[0].branchingTF[:4]) + " "
-        if "converged" in self.sol: stri += " zLD CONVERGED " + str(self.sol["converged"])
+        # if "converged" in self.sol: stri += " zLD CONVERGED " + str(self.sol["converged"])
         return stri

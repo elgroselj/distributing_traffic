@@ -106,6 +106,7 @@ def init_from_graph(graph,demands):
 
 def run(obj,constraints,vp,graph,MAX_ITER,INIT_NUM_STEPS):
     Node.label = 0
+    Node.label_solved = 0
     Node.INIT_NUM_STEPS = INIT_NUM_STEPS
     n1 = Node(obj,constraints,vp)
     L = [n1]
@@ -115,7 +116,10 @@ def run(obj,constraints,vp,graph,MAX_ITER,INIT_NUM_STEPS):
     
     q = 0
     while len(L) > 0:
+        if q >= MAX_ITER: break
+        q += 1
         
+        # 1
         # prednost imajo otroci staršev z cap_ok == True
         n = None
         for n2 in L:
@@ -125,6 +129,16 @@ def run(obj,constraints,vp,graph,MAX_ITER,INIT_NUM_STEPS):
                 break
         if n is None:
             n = L.pop(0)
+        
+        # 2
+        # sortiramo najprej po cap_ok, potem pa kdo ima najbolj ohlapno mejo
+        # def f(n_):
+        #     if n_.parent is None:
+        #         return (0,UB) 
+        #     else:
+        #         return (~n_.parent.sol["cap_ok"], n_.parent.sol["zLD"]) # prvo (0 == True, majhna št)
+        # L.sort(key=lambda n_ : f(n_)) 
+        # n = L.pop(0)
 
         values = n.solve(UB)
         try:
@@ -158,8 +172,7 @@ def run(obj,constraints,vp,graph,MAX_ITER,INIT_NUM_STEPS):
         
         ch = n.get_children()
         L += ch
-        q += 1
-        if q >= MAX_ITER: break
+        
 
 
     if len(L) == 0: print("VSE PREISKANO")
@@ -181,53 +194,59 @@ def run(obj,constraints,vp,graph,MAX_ITER,INIT_NUM_STEPS):
     # TODO bug ko "vse preiskano" pa ni optimalne rešitve
     return n_best # TODO podati oceno koliko je še lufta do optimuma
 
-# def run2(obj,constraints,vp,MAX_ITER):
-#     q = 0 # initial number of iteration
-#     flag = 0
-#     betha = 2
-#     q_max = MAX_ITER # max number of iteration is q_max.
-#     UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
-#     LB = -np.inf  # initial upper bound and lower bound 
-#     eps = 10**(-7)
+def run2(obj,constraints,vp,MAX_ITER):
+    q = 0 # initial number of iteration
+    flag = 0
+    betha = 2
+    q_max = MAX_ITER # max number of iteration is q_max.
+    UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
+    LB = -np.inf  # initial upper bound and lower bound 
+    eps = 10**(-11)
     
-#     UB_min = UB
-#     X_best = None
+    UB_min = UB
+    X_best = None
     
-#     problem = cp.Problem(obj, constraints)
+    problem = cp.Problem(obj, constraints)
     
-#     # Node.label = 0
-#     # Node.INIT_NUM_STEPS = INIT_NUM_STEPS
-#     # n = Node(obj,constraints,vp)
-#     while q <= q_max and betha > eps:
-#         problem.solve()
-#         X = vp["X"].value
-#         zLD = problem.value
-#         if np.all(np.sum(X,axis=1) <= vp["cap"].value):#X* is feasible:
-#             UB = vp["c"].value.T @ np.sum(X,axis=1) # z
-#             if UB < UB_min:
-#                 UB_min = UB
-#                 X_best = X
+    # Node.label = 0
+    # Node.INIT_NUM_STEPS = INIT_NUM_STEPS
+    # n = Node(obj,constraints,vp)
+    values = []
+    while q <= q_max and betha > eps:
+        problem.solve()
+        X = vp["X"].value
+        zLD = problem.value
+        values.append(zLD)
+        if np.all(np.sum(X,axis=1) <= vp["cap"].value):#X* is feasible:
+            UB = vp["c"].value.T @ np.sum(X,axis=1) # z
+            if UB < UB_min:
+                UB_min = UB
+                X_best = X
                 
-#         if zLD < LB:
-#             flag = 3
-#         else:
-#             if zLD - LB < eps * max(1,LB):
-#                 flag = flag + 1
-#             if zLD > LB:
-#                 LB = zLD
+        if zLD < LB:
+            flag = 3
+        else:
+            if zLD - LB < eps * max(1,LB):
+                flag = flag + 1
+            if zLD > LB:
+                LB = zLD
                 
-#         if flag > 2:
-#             betha = betha/2
-#             flag = 0
+        if flag > 2:
+            betha = betha/2
+            flag = 0
 
-#         s = vp["cap"].value - np.sum(vp["X"].value,axis=1)
-#         alpha = betha * (UB - zLD)/np.linalg.norm(s)
-#         ll = vp["lam"].value - s * alpha
-#         ll[ll < 0] = 0 # lambda ne mora biti negativna
-#         vp["lam"].value = ll
-#         q = q + 1
-#     print(q,betha)
-#     return (LB,UB,X_best)
+        s = vp["cap"].value - np.sum(vp["X"].value,axis=1)
+        alpha = betha * (UB - zLD)/np.linalg.norm(s)
+        ll = vp["lam"].value - s * alpha
+        ll[ll < 0] = 0 # lambda ne mora biti negativna
+        vp["lam"].value = ll
+        q = q + 1
+    print(q,betha)
+    try:
+        plt.plot(values)
+    except:
+        pass
+    return (LB,UB,X_best)
     
 
 def fill_maxspeed(g):
