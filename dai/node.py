@@ -8,9 +8,11 @@ class Node:
     INIT_NUM_STEPS = 100
     label = 0
     label_solved = 0
-    def __init__(self, obj, constraints, vp, level = 0, parent = None, branchingTF = None):
+    def __init__(self, obj, constraints, vp, graph, level = 0, parent = None, branchingTF = None):
         self.problem = cp.Problem(obj, constraints)
         self.vp = vp
+        self.graph = graph
+        
         self.sol = None
         self.children = None
         
@@ -27,181 +29,206 @@ class Node:
     
         
     
-    def solve(self,UB,lam0 = None):
-        self.label_solved = Node.label_solved
-        Node.label_solved += 1
-        
-        sol = {"zLD":-np.inf,"status":None,"X":None,"lam":None,"cap_ok":False}
-        no_change_counter = 0
-        betha = 2
-        if lam0 is None:
-            self.vp["lam"].value = np.zeros(self.vp["lam"].value.shape)
-        else:
-            self.vp["lam"].value = lam0
-        
-        tt_init = Node.INIT_NUM_STEPS #100 # pomenbno je, da dobro skonvergiramo na začetku TODO analiziraj obnašanje
-        tt = max(20,int(tt_init/(self.level+1)))
-        print(tt)
-        
-        values = []
-        for t in range(tt):
-            # print(t,":")
-            # rešimo LD pri neki lambdi
-            # TODO reši LD bolj učinkovito     
-            self.problem.solve()
-            
-            # če LD slučajno ni rešljiv, bomo šli ven že v 1. koraku
-            # to je ko pogojem o ohranitvi toka ne more bit zadoščeno
-            if self.problem.status == "infeasible":
-                print("conservation of flow constraint couldn't be satisfied at LD - infeasible")
-                self.sol = sol
-                self.sol["status"] = self.problem.status
-                return
-            
-            if self.problem.status == "unbounded":
-                raise("LD - unbounded")
-                break
-            
-            # zapomnimo si najtesnejšo (najvišjo) rešitev LD
-            if self.problem.value > sol["zLD"]:
-                sol = {"zLD":self.problem.value,"status":self.problem.status,"X":self.vp["X"].value,"lam":self.vp["lam"].value}
-            
-            values.append(self.problem.value)
-            # if self.problem.value == sol["zLD"]:
-            #     no_change_counter += 1
-            #     if no_change_counter > 3:
-            #         if betha == 2:
-            #             betha = 1
-            #             no_change_counter = 0
-            #         else:
-            #             print("no change in lambda limit reached in ", t,"-th step - converged")
-            #             sol["converged"] = t
-            #             break  
-            # else:
-            #     no_change_counter = 0
-            
-            
-            # subgradient = prosta kapaciteta
-            s = self.vp["cap"].value - np.sum(self.vp["X"].value,axis=1)
-            if np.linalg.norm(s) == 0:
-                raise("miracle: s == 0")
-                return
-            # izberemo korak (nalivno ali op)
-            # 1
-            # alpha = 1/(t+1)
-            
-            # 2
-            # if UB == np.inf: 
-            #     alpha = 1/(t+1)
-            # else:
-            #     alpha = 1/(t+1) * (UB - self.problem.value)/np.linalg.norm(s)**2  # TODO
-            
-            # 3
-            
-            if UB == np.inf: 
-                alpha = 1/(t+1)
-            else:
-                alpha = betha * (UB - self.problem.value)/np.linalg.norm(s)**2  # TODO
-            
-            # print("lambda:",self.vp["lam"].value)
-            # print("s:",s)
-            # print("alpha:",alpha)
-            ll = self.vp["lam"].value - s * alpha
-            ll[ll < 0] = 0 # lambda ne mora biti negativna
-            # if np.all(self.vp["lam"].value == ll):
-            #     no_change_counter += 1
-            #     if no_change_counter > 3:
-            #         print("no change in lambda limit reached in ", t,"-th step - converged")
-            #         sol["converged"] = t
-            #         break
-            # else:
-            #     no_change_counter = 0
-            self.vp["lam"].value = ll
-            
-        
-        #hf.plot_solution_graph(graph,sol["X"])
-        # print("status:", sol["status"])
-        # print("optimal value zLD", sol["val"])
-        # print("lambda:", sol["lam"])
-        # print("optimal var x", sol["X"])
-        sol["s"] = self.vp["cap"].value - np.sum(sol["X"],axis=1)
-        sol["z"] = self.vp["c"].value.T @ np.sum(sol["X"],axis=1)
-        sol["cap_ok"] = np.all(np.sum(sol["X"],axis=1) <= self.vp["cap"].value)
-        sol["zLD_ceil"] = np.ceil(sol["zLD"])
-        
-        self.sol = sol
-        
-        return values
-    
-    # def solve(self,LB_,UB_,lam0 = None,MAX_ITER_LR=100):
+    # def solve(self,UB,lam0 = None):
     #     self.label_solved = Node.label_solved
     #     Node.label_solved += 1
         
     #     sol = {"zLD":-np.inf,"status":None,"X":None,"lam":None,"cap_ok":False}
-        
+    #     no_change_counter = 0
+    #     betha = 2
     #     if lam0 is None:
     #         self.vp["lam"].value = np.zeros(self.vp["lam"].value.shape)
     #     else:
     #         self.vp["lam"].value = lam0
         
-    #     q = 0 # initial number of iteration
-    #     flag = 0
-    #     betha = 2
-    #     q_max = MAX_ITER_LR # max number of iteration is q_max.
-    #     LB = LB_
-    #     UB = UB_
-    #     # UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
-    #     # LB = -np.inf  # initial upper bound and lower bound 
-    #     eps = 10**(-11)
+    #     tt_init = Node.INIT_NUM_STEPS #100 # pomenbno je, da dobro skonvergiramo na začetku TODO analiziraj obnašanje
+    #     tt = max(20,int(tt_init/(self.level+1)))
+    #     print(tt)
         
-    #     UB_min = UB
-    #     X_best = None
-        
-    #     # problem = cp.Problem(obj, constraints)
-        
-    #     # Node.label = 0
-    #     # Node.INIT_NUM_STEPS = INIT_NUM_STEPS
-    #     # n = Node(obj,constraints,vp)
     #     values = []
-    #     while q <= q_max and betha > eps:
+    #     for t in range(tt):
+    #         # print(t,":")
+    #         # rešimo LD pri neki lambdi
+    #         # TODO reši LD bolj učinkovito     
     #         self.problem.solve()
-    #         X = self.vp["X"].value
-    #         zLD = self.problem.value
-    #         values.append(zLD)
-    #         if np.all(np.sum(X,axis=1) <= self.vp["cap"].value):#X* is feasible:
-    #             UB = self.vp["c"].value.T @ np.sum(X,axis=1) # z
-    #             if UB < UB_min:
-    #                 UB_min = UB
-    #                 sol["X"] = X
-                    
-    #         if zLD < LB:
-    #             flag = 3
-    #         else:
-    #             if zLD - LB < eps * max(1,LB):
-    #                 flag = flag + 1
-    #             if zLD > LB:
-    #                 LB = zLD
-                    
-    #         if flag > 2:
-    #             betha = betha/2
-    #             flag = 0
-
+            
+    #         # če LD slučajno ni rešljiv, bomo šli ven že v 1. koraku
+    #         # to je ko pogojem o ohranitvi toka ne more bit zadoščeno
+    #         if self.problem.status == "infeasible":
+    #             print("conservation of flow constraint couldn't be satisfied at LD - infeasible")
+    #             self.sol = sol
+    #             self.sol["status"] = self.problem.status
+    #             return
+            
+    #         if self.problem.status == "unbounded":
+    #             raise("LD - unbounded")
+    #             break
+            
+    #         # zapomnimo si najtesnejšo (najvišjo) rešitev LD
+    #         if self.problem.value > sol["zLD"]:
+    #             sol = {"zLD":self.problem.value,"status":self.problem.status,"X":self.vp["X"].value,"lam":self.vp["lam"].value}
+            
+    #         values.append(self.problem.value)
+    #         # if self.problem.value == sol["zLD"]:
+    #         #     no_change_counter += 1
+    #         #     if no_change_counter > 3:
+    #         #         if betha == 2:
+    #         #             betha = 1
+    #         #             no_change_counter = 0
+    #         #         else:
+    #         #             print("no change in lambda limit reached in ", t,"-th step - converged")
+    #         #             sol["converged"] = t
+    #         #             break  
+    #         # else:
+    #         #     no_change_counter = 0
+            
+            
+    #         # subgradient = prosta kapaciteta
     #         s = self.vp["cap"].value - np.sum(self.vp["X"].value,axis=1)
-    #         alpha = betha * (UB - zLD)/np.linalg.norm(s)
+    #         if np.linalg.norm(s) == 0:
+    #             raise("miracle: s == 0")
+    #             return
+    #         # izberemo korak (nalivno ali op)
+    #         # 1
+    #         # alpha = 1/(t+1)
+            
+    #         # 2
+    #         # if UB == np.inf: 
+    #         #     alpha = 1/(t+1)
+    #         # else:
+    #         #     alpha = 1/(t+1) * (UB - self.problem.value)/np.linalg.norm(s)**2  # TODO
+            
+    #         # 3
+            
+    #         if UB == np.inf: 
+    #             alpha = 1/(t+1)
+    #         else:
+    #             alpha = betha * (UB - self.problem.value)/np.linalg.norm(s)**2  # TODO
+            
+    #         # print("lambda:",self.vp["lam"].value)
+    #         # print("s:",s)
+    #         # print("alpha:",alpha)
     #         ll = self.vp["lam"].value - s * alpha
     #         ll[ll < 0] = 0 # lambda ne mora biti negativna
+    #         # if np.all(self.vp["lam"].value == ll):
+    #         #     no_change_counter += 1
+    #         #     if no_change_counter > 3:
+    #         #         print("no change in lambda limit reached in ", t,"-th step - converged")
+    #         #         sol["converged"] = t
+    #         #         break
+    #         # else:
+    #         #     no_change_counter = 0
     #         self.vp["lam"].value = ll
-    #         q = q + 1
-    #     print(q,betha)
+            
         
+    #     #hf.plot_solution_graph(graph,sol["X"])
+    #     # print("status:", sol["status"])
+    #     # print("optimal value zLD", sol["val"])
+    #     # print("lambda:", sol["lam"])
+    #     # print("optimal var x", sol["X"])
     #     sol["s"] = self.vp["cap"].value - np.sum(sol["X"],axis=1)
-    #     sol["z"] = UB # self.vp["c"].value.T @ np.sum(sol["X"],axis=1)
+    #     sol["z"] = self.vp["c"].value.T @ np.sum(sol["X"],axis=1)
     #     sol["cap_ok"] = np.all(np.sum(sol["X"],axis=1) <= self.vp["cap"].value)
-    #     sol["zLD_ceil"] = LB # np.ceil(sol["zLD"])
+    #     sol["zLD_ceil"] = np.ceil(sol["zLD"])
         
     #     self.sol = sol
         
     #     return values
+    
+    def solve(self,LB_,UB_,lam0 = None,MAX_ITER_LR=100):
+        self.label_solved = Node.label_solved
+        Node.label_solved += 1
+        
+        sol = {"zLD":-np.inf,"status":"neki","X":None,"lam":None,"cap_ok":False}
+        
+        if lam0 is None:
+            self.vp["lam"].value = np.zeros(self.vp["lam"].value.shape)
+        else:
+            self.vp["lam"].value = lam0
+        
+        q = 0 # initial number of iteration
+        flag = 0
+        betha = 2
+        q_max = MAX_ITER_LR # max number of iteration is q_max.
+        LB = LB_
+        UB = UB_
+        # UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
+        # LB = -np.inf  # initial upper bound and lower bound 
+        eps = 10**(-11)
+        
+        # UB_min = UB
+        # X_best = None
+        # z_min = np.inf
+        
+        # problem = cp.Problem(obj, constraints)
+        
+        # Node.label = 0
+        # Node.INIT_NUM_STEPS = INIT_NUM_STEPS
+        # n = Node(obj,constraints,vp)
+        values = []
+        while q <= q_max and betha > eps:
+            self.problem.solve()
+            if self.problem.status == "infeasible":
+                print("conservation of flow constraint couldn't be satisfied at LD - infeasible")
+                self.sol = sol
+                self.sol["status"] = self.problem.status
+                return
+            X = self.vp["X"].value
+            zLD = self.problem.value
+            values.append(zLD)
+            if np.all(np.sum(X,axis=1) <= self.vp["cap"].value):#X* is feasible:
+                # z = self.vp["c"].value.T @ np.sum(X,axis=1) # z
+                # if z < z_min:
+                #     z_min = z
+                #     sol["X"] = X
+                #     sol["status"] = "feasible"
+                    
+                #     # if z <= UB:
+                #     #     UB = z
+                
+                z = self.vp["c"].value.T @ np.sum(X,axis=1) # z
+                # if z < z_min:
+                #     z_min = z
+                #     sol["X"] = X
+                #     sol["status"] = "feasible"
+                    
+                if z <= UB:
+                    UB = z
+                    sol["X"] = X
+                    sol["status"] = "feasible"
+                    
+                    
+                    
+                    
+            if zLD < LB:
+                flag = 3
+            else:
+                if zLD - LB < eps * max(1,LB):
+                    flag = flag + 1
+                if zLD > LB:
+                    LB = zLD
+                    
+            if flag > 2:
+                betha = betha/2
+                flag = 0
+
+            s = self.vp["cap"].value - np.sum(self.vp["X"].value,axis=1)
+            alpha = betha * (UB - zLD)/np.linalg.norm(s)
+            ll = self.vp["lam"].value - s * alpha
+            ll[ll < 0] = 0 # lambda ne mora biti negativna
+            self.vp["lam"].value = ll
+            q = q + 1
+        print(q,betha)
+        
+        sol["X"] = X if sol["X"] is None else sol["X"]
+        sol["s"] = self.vp["cap"].value - np.sum(sol["X"],axis=1)
+        sol["z"] = UB # self.vp["c"].value.T @ np.sum(sol["X"],axis=1)
+        sol["cap_ok"] = np.all(np.sum(sol["X"],axis=1) <= self.vp["cap"].value)
+        sol["zLD_ceil"] = np.ceil(LB) # np.ceil(sol["zLD"])
+        
+        self.sol = sol
+        
+        return values
     
     
     
@@ -255,10 +282,16 @@ class Node:
                 n = n.parent
             return True
         
-        r = np.argsort(-s)
+        # r = np.argsort(-s)
+        r = np.argsort(s) # TODO zakaj to ne dela
         for a in r:
             k = np.random.randint(0,X.shape[1])
             val = int(X[a,k])
+            cap_a = int(self.vp["cap"].value[a])
+            if cap_a <= val:
+                val = cap_a - 1
+             # tj če cap = 4, in mamo na njej val = 5: delimo <=3 >=4
+             # tj če cap = 4, in mamo na njen val = 4: delimo <=3 >=4
             branching = (a,k,val,val+1)
             if is_new_branching(branching):
                 break
@@ -268,8 +301,8 @@ class Node:
         constraints2 = self.problem.constraints + [self.vp["X"][a,k] >= (val +1)] # true        
         
         
-        ch1 = Node(self.problem.objective,constraints1,self.vp,level=self.level+1,parent=self,branchingTF=branching + (False,))
-        ch2 = Node(self.problem.objective,constraints2,self.vp,level=self.level+1,parent=self,branchingTF=branching + (True,))
+        ch1 = Node(self.problem.objective,constraints1,self.vp,self.graph,level=self.level+1,parent=self,branchingTF=branching + (False,))
+        ch2 = Node(self.problem.objective,constraints2,self.vp,self.graph,level=self.level+1,parent=self,branchingTF=branching + (True,))
         
         self.children = [ch1,ch2]
         
@@ -283,13 +316,25 @@ class Node:
         return ret
     
     def __repr__(self):
-        if self.sol is None: return str(self.label) +": not available"
-        else: stri =  str(self.label) + " / " + str(self.label_solved)
+        # če še ni razvit
+        if self.sol is None:
+            # sprintaš samo kdaj je bil generiran
+            return str(self.label) + ": not available"
         
-        if self.sol["status"] == "infeasible": return stri +": "+ self.sol["status"]
-        stri = (stri +": "+ self.sol["status"]+" z: "+ str(self.sol["z"])+" zLD: "+ # str(self.sol["zLD"]) +
-            "("+str(self.sol["zLD_ceil"])+")"+ " cap_ok = " + str(self.sol["cap_ok"]))
-        # if "vejanje" in self.sol: stri += " " + repr(self.sol["vejanje"]) + " "
-        if self.children is not None: stri += " " + repr(self.children[0].branchingTF[:4]) + " "
-        # if "converged" in self.sol: stri += " zLD CONVERGED " + str(self.sol["converged"])
+        # sicer sprintaš tudi kdaj je bil razvit
+        stri =  str(self.label) + " / " + str(self.label_solved) + ": " + self.sol["status"]
+        
+        # če smo ugotovili nedopustnost ja to to kar vemo
+        if self.sol["status"] == "infeasible":
+            return stri
+        
+        stri += " z: "+ str(self.sol["z"])
+        stri += " zLD: " + str(self.sol["zLD_ceil"])
+        stri += " cap_ok = " + str(self.sol["cap_ok"])
+        
+        # če je razvejan, po čem
+        if self.children is not None:
+            a = self.children[0].branchingTF[0]
+            stri += " " + repr(list(self.graph.edges())[a]) + "," + repr(self.children[0].branchingTF[1:4]) + " "
+            
         return stri
