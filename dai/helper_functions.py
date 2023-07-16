@@ -6,6 +6,10 @@ from node import Node
 from scipy import sparse
 COLORS = "brgpy"
 
+import node
+import importlib
+importlib.reload(node)
+
 
 def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20)):
     plt.figure(figsize=figure_size)
@@ -108,16 +112,17 @@ def init_from_graph(graph,demands):
 
 
 def run(obj,constraints,vp,graph,MAX_ITER,MAX_ITER_LR):
-    Node.label = 0
-    Node.label_solved = 0
-    # Node.INIT_NUM_STEPS = INIT_NUM_STEPS
-    n1 = Node(obj,constraints,vp,graph)
+    node.Node.label = 0
+    node.Node.label_solved = 0
+    # node.Node.INIT_NUM_STEPS = INIT_NUM_STEPS
+    n1 = node.Node(obj,constraints,vp,graph)
     L = [n1]
 
     n_best = None
     # UB = np.inf # celostevilski
     UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
-    
+    # TODO že na zacetku nek dober UB
+    # UB = 24
     q = 0
     while len(L) > 0:
         if q >= MAX_ITER: break
@@ -136,26 +141,43 @@ def run(obj,constraints,vp,graph,MAX_ITER,MAX_ITER_LR):
         
         # 2
         # sortiramo najprej po cap_ok, potem pa kdo ima najbolj ohlapno mejo
+        # def f(n_):
+        #     if n_.parent is None:
+        #         return (0,UB) 
+        #     else:
+        #         print("*",end="")
+        #         return (~n_.parent.sol["cap_ok"], n_.parent.sol["zLD_ceil"]) # prvo (0 == True, majhna št)
+            
+        # # print("before: ",L)
+        # # print([f(n_) for n_ in L])
+        # L.sort(key=lambda n_ : f(n_)) 
+        # # print("after: ",L)
+        # print([f(n_) for n_ in L])
+        # n = L.pop(0)
+        
+        # 3
         def f(n_):
             if n_.parent is None:
                 return (0,UB) 
             else:
                 print("*",end="")
                 return (~n_.parent.sol["cap_ok"], n_.parent.sol["zLD_ceil"]) # prvo (0 == True, majhna št)
-        # print("before: ",L)
-        # print([f(n_) for n_ in L])
-        L.sort(key=lambda n_ : f(n_)) 
-        # print("after: ",L)
-        print([f(n_) for n_ in L])
+            
+        if q % 2 == 0:
+            L.sort(key=lambda n_ : f(n_))
+        else:
+            L.sort(key=lambda n_ : n_.label)
+        print([(f(n_), n_.label) for n_ in L])
         n = L.pop(0)
 
         # values = n.solve(UB)
-        LB = n.parent.sol["zLD_ceil"] if n.parent is not None else -np.inf
+        LB = n.parent.sol["zLD_ceil"] if n.parent is not None else 0
         # spodnjo mejo lahko vzameš od staršev, ker bo otrok imel kvečjemu dražje rešitve
         # LB DOBIŠ OD STARŠEV, UB DOBIŠ OD GLOBALNE CELE REŠITVE
         values = n.solve(LB,UB,lam0 = None,MAX_ITER_LR=MAX_ITER_LR)
         try:
             plt.plot(values)
+            # plt.show()
         except:
             pass
         
@@ -167,8 +189,8 @@ def run(obj,constraints,vp,graph,MAX_ITER,MAX_ITER_LR):
         zLD_ceil = n.sol["zLD_ceil"] # zaokrožimo BŠS, dobimo bolj tesno mejo
         
         z = n.sol["z"]
-        
-        if z > UB: # ta veja bo samo še slabša (dražja)
+        # if z > UB: # ta veja bo samo še slabša (dražja)
+        if zLD_ceil >= UB: # ta veja bo samo še slabša (dražja) ali enaka
             n.sol["status"] += " COST too large("+str(UB)+")"
             continue
         
@@ -218,9 +240,9 @@ def run(obj,constraints,vp,graph,MAX_ITER,MAX_ITER_LR):
     
 #     problem = cp.Problem(obj, constraints)
     
-#     # Node.label = 0
-#     # Node.INIT_NUM_STEPS = INIT_NUM_STEPS
-#     # n = Node(obj,constraints,vp)
+#     # node.Node.label = 0
+#     # node.Node.INIT_NUM_STEPS = INIT_NUM_STEPS
+#     # n = node.Node(obj,constraints,vp)
 #     values = []
 #     while q <= q_max and betha > eps:
 #         problem.solve()

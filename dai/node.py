@@ -139,7 +139,7 @@ class Node:
         self.label_solved = Node.label_solved
         Node.label_solved += 1
         
-        sol = {"zLD":-np.inf,"status":"neki","X":None,"lam":None,"cap_ok":False}
+        sol = {"zLD_ceil":-np.inf,"status":"neki","X":None,"lam":None,"cap_ok":False}
         
         if lam0 is None:
             self.vp["lam"].value = np.zeros(self.vp["lam"].value.shape)
@@ -148,13 +148,13 @@ class Node:
         
         q = 0 # initial number of iteration
         flag = 0
-        betha = 2
+        betha = 1#2
         q_max = MAX_ITER_LR # max number of iteration is q_max.
-        LB = LB_
-        UB = UB_
-        # UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
+        LB = -np.inf
+        # UB = UB_
+        UB = np.sum(self.vp["c"].value) * self.vp["H"].value.shape[1] * np.max(self.vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
         # LB = -np.inf  # initial upper bound and lower bound 
-        eps = 10**(-11)
+        eps = 10**(-7)
         
         # UB_min = UB
         # X_best = None
@@ -213,7 +213,7 @@ class Node:
                 flag = 0
 
             s = self.vp["cap"].value - np.sum(self.vp["X"].value,axis=1)
-            alpha = betha * (UB - zLD)/np.linalg.norm(s)
+            alpha = min(1,betha * (UB - zLD)/np.linalg.norm(s))
             ll = self.vp["lam"].value - s * alpha
             ll[ll < 0] = 0 # lambda ne mora biti negativna
             self.vp["lam"].value = ll
@@ -224,7 +224,9 @@ class Node:
         sol["s"] = self.vp["cap"].value - np.sum(sol["X"],axis=1)
         sol["z"] = UB # self.vp["c"].value.T @ np.sum(sol["X"],axis=1)
         sol["cap_ok"] = np.all(np.sum(sol["X"],axis=1) <= self.vp["cap"].value)
-        sol["zLD_ceil"] = np.ceil(LB) # np.ceil(sol["zLD"])
+        sol["zLD_ceil"] = max(int(np.ceil(LB)),int(LB_)) # np.ceil(sol["zLD"])
+        # vzamemo tesnejšo od mej (straši vs naša)
+        # sol["zLD_ceil_max"] = sol["zLD_ceil"] if sol["zLD_ceil"] > LB_ else LB_
         
         self.sol = sol
         
@@ -282,20 +284,37 @@ class Node:
                 n = n.parent
             return True
         
-        # r = np.argsort(-s)
-        r = np.argsort(s) # TODO zakaj to ne dela
-        for a in r:
-            k = np.random.randint(0,X.shape[1])
+        def create_branching(X,a,k):
             val = int(X[a,k])
             cap_a = int(self.vp["cap"].value[a])
             if cap_a <= val:
                 val = cap_a - 1
-             # tj če cap = 4, in mamo na njej val = 5: delimo <=3 >=4
-             # tj če cap = 4, in mamo na njen val = 4: delimo <=3 >=4
+            # tj če cap = 4, in mamo na njej val = 5: delimo <=3 >=4
+            # tj če cap = 4, in mamo na njen val = 4: delimo <=3 >=4
             branching = (a,k,val,val+1)
-            if is_new_branching(branching):
-                break
-            
+            return branching
+        
+        branching = None
+        if self.sol["cap_ok"]:
+            indeksi = list(np.where(X > 0)[0])
+            indeksi = random.sample(indeksi,len(indeksi))
+            for i in indeksi:
+                print("*",end="")
+                a,k = np.unravel_index(i,X.shape)
+                branching = create_branching(X,a,k)
+                if is_new_branching(branching):
+                    print()
+                    break
+        else:
+            r = np.argsort(s)
+            for a in r:
+                k = np.random.randint(0,X.shape[1])
+                branching = create_branching(X,a,k)
+                if is_new_branching(branching):
+                    break
+        if branching is None:
+            raise("branching is None")
+        val = branching[2]
         
         constraints1 = self.problem.constraints + [self.vp["X"][a,k] <= val] # false
         constraints2 = self.problem.constraints + [self.vp["X"][a,k] >= (val +1)] # true        
@@ -328,13 +347,13 @@ class Node:
         if self.sol["status"] == "infeasible":
             return stri
         
-        stri += " z: "+ str(self.sol["z"])
-        stri += " zLD: " + str(self.sol["zLD_ceil"])
+        stri += " z: "+ str(self.sol["z"])+","
+        stri += " zLD: " + str(self.sol["zLD_ceil"]) #+ "(" + str(self.sol["zLD_ceil_max"]) + ")"
         stri += " cap_ok = " + str(self.sol["cap_ok"])
         
         # če je razvejan, po čem
         if self.children is not None:
             a = self.children[0].branchingTF[0]
-            stri += " " + repr(list(self.graph.edges())[a]) + "," + repr(self.children[0].branchingTF[1:4]) + " "
+            stri += " " + repr(list(self.graph.edges())[a]) + "(" + str(a) + ")"  + "," + repr(self.children[0].branchingTF[1:4]) + " "
             
         return stri
