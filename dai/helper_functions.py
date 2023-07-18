@@ -53,6 +53,13 @@ def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20)
         print(k,"\t",COLORS[k])
     # print(list(multi.edges()))
     plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size)
+    
+def plot_solution_graph_from_dict(graph,X_dict,with_labels=True,font_size=5,figure_size=(20,20)):
+    multi = nx.MultiDiGraph(graph)
+    for ie, k in X_dict:
+        multi.add_edges_from([list(graph.edges())[ie]], color=COLORS[k], label = X_dict[(ie,k)])
+    # print(list(multi.edges()))
+    plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size)
 
 def init_from_graph(graph,demands):
     # razberem dimenzije
@@ -121,6 +128,7 @@ def run(obj,constraints,vp,graph,MAX_ITER,MAX_ITER_LR):
     n_best = None
     # UB = np.inf # celostevilski
     UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
+    # UB = 91
     # TODO že na zacetku nek dober UB
     # UB = 24
     q = 0

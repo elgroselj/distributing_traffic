@@ -148,11 +148,12 @@ class Node:
         
         q = 0 # initial number of iteration
         flag = 0
-        betha = 1#2
+        betha = 1.1#2 #TODO test
         q_max = MAX_ITER_LR # max number of iteration is q_max.
         LB = -np.inf
         # UB = UB_
-        UB = np.sum(self.vp["c"].value) * self.vp["H"].value.shape[1] * np.max(self.vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
+        UB = np.sum(self.vp["c"].value) * self.vp["H"].value.shape[1] * np.max(self.vp["H"].value) # TODO to je vsi komoditiji grejo po vseh povezavah
+        # UB = np.inf
         # LB = -np.inf  # initial upper bound and lower bound 
         eps = 10**(-7)
         
@@ -196,6 +197,8 @@ class Node:
                     UB = z
                     sol["X"] = X
                     sol["status"] = "feasible"
+                    
+                    # betha = 2 # TODO test # reset po izboljšanju
                     
                     
                     
