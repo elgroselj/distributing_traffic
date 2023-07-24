@@ -5,6 +5,29 @@ import random
 import networkx as nx
 from scipy import sparse
 from collections import Counter
+from enum import Enum
+
+import subproblem_solvers as ss
+
+import importlib
+importlib.reload(ss)
+
+
+
+# class syntax
+
+class Status(Enum):
+    CLP_FEASIBLE = 1
+    LR_FEASIBLE = 2
+    INFEASIBLE = 3
+    COST_TOO_LARGE = 4
+    
+class Sol:
+    X = None
+    zLD_ceil = None
+    msg = ""
+    status = None
+    
 
 class Node:
     
@@ -15,7 +38,9 @@ class Node:
     label = 0
     label_solved = 0
     
-    def __init__(self, obj, constraints, obj_ex, constraints_ex_additional, vp, graph, level = 0, parent = None, branchingTF = None):
+    
+    # def __init__(self, obj, constraints, obj_ex, constraints_ex_additional, vp, graph, level = 0, parent = None, branchingTF = None):
+    def __init__(self, obj, constraints, obj_ex, constraints_ex_additional, vp, graph, level = 0, parent = None, branchingTF = None, U = None, L = None):
         self.problem = cp.Problem(obj, constraints)
         self.problem_ex = cp.Problem(obj_ex, constraints + constraints_ex_additional)
         self.constraints_ex_additional = constraints_ex_additional
@@ -36,8 +61,12 @@ class Node:
         # self.branches = branches
         self.branchingTF = branchingTF
     
+        _,m = self.vp["B"].value.shape
+        _,t = self.vp["H"].value.shape
+        # self.U = np.repeat(self.vp["cap"].value, t, axis=0)
+        self.U = np.repeat([self.vp["cap"].value], t, axis=0).T if U is None else U
+        self.L = np.zeros((m,t)) if U is None else L
         
-
     
     def solve(self,LB_,UB_,graph,demands):
         # solve 
@@ -58,7 +87,6 @@ class Node:
                "status":"neki",
                "X":None,
                "cap_ok":False,
-               "solved_exacly":False,
                "s":None}
         
        
@@ -83,25 +111,24 @@ class Node:
             sol["status"] = " like_parent "
         else:
             while q <= q_max and beta > eps:
+                ###############################
+                # X, status, zLD, s = ss.dijkstra1(self.vp, graph, demands, alpha)
+                # X, status, zLD, s = ss.dijkstra2(self.vp, graph, demands, self.U, self.L, alpha)
+                X, status, zLD, s = ss.cvxpy_linprog_LR(self.problem, self.vp, alpha)
                 
-                self.problem.solve()
-                
-        
-                if self.problem.status == "infeasible":
+                ###############################################
+                if status == "infeasible":
                     # print("conservation of flow constraint couldn't be satisfied at LD - infeasible")
                     self.sol = sol
-                    self.sol["status"] = self.problem.status
+                    self.sol["status"] = status
                     return
                 
-                X = self.vp["X"].value
-                zLD = self.problem.value
-                
-                    
-                
+            
                 values.append(zLD)
                 
-                if np.all(np.sum(X,axis=1) <= self.vp["cap"].value):#X* is feasible:
-
+                # if np.all(np.sum(X,axis=1) <= self.vp["cap"].value):#X* is feasible:
+                if np.all(s >= 0):#X* is feasible for CLP an node:
+                    print("LR found feasible")
                     z = self.vp["c"].value.T @ np.sum(X,axis=1) # z
                     zi = z
                     if z <= sol["z"]: # zapomnim si najcenejšo dopustno rešitev
@@ -110,8 +137,6 @@ class Node:
                         sol["status"] = "feasible"
                         sol["cap_ok"] = True
                         sol["lam"] = self.vp["lam"].value
-                        
-                        # beta = 2 # TODO test # reset po izboljšanju
                         
                         
                         
@@ -138,7 +163,7 @@ class Node:
                     beta = beta/2
                     flag = 0
 
-                s = self.vp["cap"].value - np.sum(self.vp["X"].value,axis=1)
+                # s = self.vp["cap"].value - np.sum(X,axis=1)
                 
                 if zi == None:
                     # print("zi is None")
@@ -149,9 +174,9 @@ class Node:
                 
                 # print(alpha)
                 
-                ll = self.vp["lam"].value - s * alpha
-                ll[ll < 0] = 0 # lambda ne mora biti negativna
-                self.vp["lam"].value = ll
+                # ll = self.vp["lam"].value - s * alpha
+                # ll[ll < 0] = 0 # lambda ne mora biti negativna
+                # self.vp["lam"].value = ll
                 q = q + 1
                 
             print(q,beta)
@@ -159,7 +184,7 @@ class Node:
             sol["zLD_ceil"] = max(np.ceil(LB),LB_)
             if sol["X"] is not None:
                 sol["X"] = X if sol["X"] is None else sol["X"]
-                sol["s"] = self.vp["cap"].value - np.sum(sol["X"],axis=1)
+                sol["s"] = s#self.vp["cap"].value - np.sum(sol["X"],axis=1)
                 # sol["zLD_ceil"] = max(int(np.ceil(LB)),int(LB_))
                 
                 # vzamemo tesnejšo od mej (straši vs naša)
@@ -181,17 +206,18 @@ class Node:
                
                 
                 
-                def get_lower_bounds_on_flow(k):
+                def get_lower_upper_bounds_on_flow(k,lower):
                     l = {}
                     n = self
                     edges = list(graph.edges())
                     while n is not None and n.branchingTF is not None:
-                        if n.branchingTF[1] == k and n.branchingTF[4] == True:
+                        if n.branchingTF[1] == k and n.branchingTF[4] == lower:
                             ei = n.branchingTF[0]
                             e = edges[ei]
                             l[e] = n.branchingTF[3]
                         n = n.parent
                     return l
+                
                 
                 def nodes_to_edges_path(inp):
                     nl = inp
@@ -200,25 +226,37 @@ class Node:
                         el.append((nl[i-1], nl[i]))
                     return el
                 
-                _,t = self.vp["H"].value.shape
-                _,m = self.vp["X"].value.shape
-                remaining_cap = {e: graph.edges()[e]["cap"] for e in graph.edges()}
-                nx.set_edge_attributes(graph, remaining_cap, "remaining_cap")
+                # _,t = self.vp["H"].value.shape
+                # _,m = self.vp["X"].value.shape
+                
                 
                 
                 
                 
                 X_dict = {}
                 solution_found = True
+                _,t = self.vp["H"].shape
+                _,m = self.vp["B"].shape 
+                
+                remaining_cap = {e: graph.edges()[e]["cap"] for e in graph.edges()}
                 for k in range(t):
                     Ok, Dk, num_k = demands[k]
-                    lbf = get_lower_bounds_on_flow(k)
+                    # ubf
+                    ubf = get_lower_upper_bounds_on_flow(k,lower=False)
+                    remaining_cap_k = dict(remaining_cap)
+                    for e in ubf:
+                        remaining_cap_k[e] = min(remaining_cap[e], ubf[e])
+                    nx.set_edge_attributes(graph, remaining_cap_k, "remaining_cap")
+                
+                    
+                    # lbf
+                    lbf = get_lower_upper_bounds_on_flow(k, lower=True)
                     
                     c = {e: graph.edges()[e]["c"] for e in graph.edges()}
                     for e in graph.edges():
                         if graph.edges()[e]["remaining_cap"] == 0:
                             c[e] = np.inf # nasičene / s kapaciteto 0 naj bodo neskončno drage
-                    alt_c = {e: (-np.inf if e in lbf else c[e]) for e in c} # te k rabijo bit uporabljene naj bojo zastonj
+                    alt_c = {e: (0 if e in lbf else c[e]) for e in c} # te k rabijo bit uporabljene naj bojo zastonj
                     
                     nx.set_edge_attributes(graph, alt_c, "alt_c")
                     
@@ -244,6 +282,7 @@ class Node:
                         
                         for e in path:
                             graph.edges()[e]["remaining_cap"] -= 1
+                            remaining_cap[e] -= 1
                             if graph.edges()[e]["remaining_cap"] == 0:
                                 graph.edges()[e]["alt_c"] = np.inf
                             elif remaining_cap[e] < 0:
@@ -260,7 +299,7 @@ class Node:
                 if solution_found:
                     print(" heuristic success")
                     sol["status"] += " heuristic "  
-                    X = sparse.dok_matrix(self.vp["X"].value.shape)
+                    X = sparse.dok_matrix((m,t))
                     for a,k in X_dict:
                         X[a,k] = X_dict[(a,k)]
                     X = X.todense()
@@ -297,6 +336,7 @@ class Node:
     def get_children(self):
         X = self.sol["X"]
         s = self.sol["s"] if self.sol["s"] is not None else self.vp["cap"].value - np.sum(X,axis=1)
+        s = s[:X.shape[0]]
         # ce jih ze imamo
         if self.children is not None:
             return self.children
@@ -373,12 +413,19 @@ class Node:
         val = branching[2]
         
         constraints1 = self.problem.constraints + [self.vp["X"][a,k] <= val] # false
-        constraints2 = self.problem.constraints + [self.vp["X"][a,k] >= (val +1)] # true        
+        constraints2 = self.problem.constraints + [self.vp["X"][a,k] >= (val +1)] # true     
         
+        U1 = np.copy(self.U)
+        U1[a,k] = val
         
-        ch1 = Node(self.problem.objective,constraints1,self.problem_ex.objective, self.constraints_ex_additional, self.vp,self.graph,level=self.level+1,parent=self,branchingTF=branching + (False,))
-        ch2 = Node(self.problem.objective,constraints2,self.problem_ex.objective, self.constraints_ex_additional, self.vp,self.graph,level=self.level+1,parent=self,branchingTF=branching + (True,))
+        L2 = np.copy(self.L)
+        L2[a,k] = val + 1
         
+        ch1 = Node(self.problem.objective, constraints1, self.problem_ex.objective, self.constraints_ex_additional,
+                   self.vp, self.graph, level=self.level+1, parent=self, branchingTF=branching + (False,), U=U1, L=self.L)
+        ch2 = Node(self.problem.objective, constraints2, self.problem_ex.objective, self.constraints_ex_additional,
+                   self.vp, self.graph, level=self.level+1, parent=self, branchingTF=branching + (True,), U=self.U, L=L2)
+
         self.children = [ch1,ch2]
         
         return self.children
@@ -431,6 +478,9 @@ def init_from_graph(graph,demands):
     vp["B"] = cp.Parameter((n,m), integer = True)
     vp["H"] = cp.Parameter((n,t), integer= True)
     vp["lam"] = cp.Parameter(m, nonneg=True)
+    
+    vp["eta"] = cp.Parameter((m,t), nonneg = True)
+    vp["xi"] = cp.Parameter((m,t), nonneg = True)
 
     # dolocim vrednosti parametrom
     vp["c"].value = np.round(np.array([data["c"] for _,_, data in graph.edges(data=True)])) # BŠS
@@ -454,6 +504,8 @@ def init_from_graph(graph,demands):
     vp["H"].value = demands_to_matrix(demands,n)
     print(vp["H"].value)
     vp["lam"].value = np.zeros(m)
+    vp["eta"].value = np.zeros((m,t))
+    vp["xi"].value = np.zeros((m,t))
 
 
 
@@ -474,31 +526,28 @@ def init_from_graph(graph,demands):
     return (obj, constraints, obj_ex, constraints_ex_additional, vp)
 
 
-
-
-
 def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MAX_ITER,MAX_ITER_LR):
     Node.label = 0
     Node.label_solved = 0
     Node.MAX_ITER_LR = MAX_ITER_LR
     n1 = Node(obj, constraints, obj_ex, constraints_ex_additional, vp,graph)
-    L = [n1]
+    todo = [n1]
 
     n_best = None
     # celostevilska rešitev
     UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
     q = 0
-    while len(L) > 0:
+    while len(todo) > 0:
         if q >= MAX_ITER: break
         q += 1
         
         ############################################
             
         if q % 2 == 0:
-            index, _ = min(enumerate(L), key=lambda tup : UB if tup[1].parent is None else tup[1].parent.sol["zLD_ceil"])
+            index, _ = min(enumerate(todo), key=lambda tup : UB if tup[1].parent is None else tup[1].parent.sol["zLD_ceil"])
         else:
             index = 0
-        n = L.pop(index)
+        n = todo.pop(index)
         ##############################################
 
         
@@ -547,7 +596,7 @@ def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MA
             
         
         ch = n.get_children()
-        L += ch
+        todo += ch
         
 
 
@@ -555,12 +604,12 @@ def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MA
         
     print(n1)
     
-    if len(L) == 0:
+    if len(todo) == 0:
         print("VSE PREISKANO")
     else:
         print()
         print("Najmanjša cena ni manjša od: ",end="") # podati oceno koliko je še lufta do optimuma
-        _, n = min(enumerate(L), key=lambda tup : UB if tup[1].parent is None else tup[1].parent.sol["zLD_ceil"])
+        _, n = min(enumerate(todo), key=lambda tup : UB if tup[1].parent is None else tup[1].parent.sol["zLD_ceil"])
         print(n.parent.sol["zLD_ceil"])
         
     if n_best is not None:
@@ -623,3 +672,12 @@ def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MA
 #     except:
 #         pass
 #     return (LB,UB,X_best)
+
+
+
+def dai_solve(graph,demands,MAX_ITER,MAX_ITER_LR):
+    obj, constraints, obj_ex, constraints_ex_additional, vp = init_from_graph(graph,demands)
+
+    n_best = run(obj,constraints,obj_ex, constraints_ex_additional, vp,graph,demands,MAX_ITER=MAX_ITER,MAX_ITER_LR=MAX_ITER_LR)
+    
+    return (n_best.sol["status"], n_best.sol["X"], n_best.sol["z"])

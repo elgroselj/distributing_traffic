@@ -1,8 +1,9 @@
+from itertools import compress
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from scipy import sparse
-COLORS = "brgpy"
+COLORS="brgymcbrgymc"
 
 import node
 import importlib
@@ -15,7 +16,12 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20)):
     try:
         pos = {n:(G.nodes[n]["x"],G.nodes[n]["y"]) for n in G.nodes()}
     except:
-        pos = nx.circular_layout(G)
+        # pos = nx.circular_layout(G)
+        try:
+            pos = nx.planar_layout(G)
+        except:
+            pos = nx.circular_layout(G)
+            
     nx.draw_networkx_nodes(G, pos, node_size=0, alpha=1)
     nx.draw_networkx_labels(G, pos, font_size=font_size)
     ax = plt.gca()
@@ -59,233 +65,8 @@ def plot_solution_graph_from_dict(graph,X_dict,with_labels=True,font_size=5,figu
     # print(list(multi.edges()))
     plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size)
 
-# def init_from_graph(graph,demands):
-#     # razberem dimenzije
-#     n = len(graph.nodes()) # 6 # |V|
-#     m = len(graph.edges()) # 10 # |E|
-#     t = len(demands) # 3
-    
-#     vp = {} # slovar spremenljivk in parametrov
-    
-#     # spremenljivke
-#     vp["X"] = cp.Variable((m,t),integer=True)
 
-#     # parametri
-#     vp["c"] = cp.Parameter(m, integer=True)
-#     vp["cap"] = cp.Parameter(m, integer = True)
-#     vp["B"] = cp.Parameter((n,m), integer = True)
-#     vp["H"] = cp.Parameter((n,t), integer= True)
-#     vp["lam"] = cp.Parameter(m, nonneg=True)
-
-#     # dolocim vrednosti parametrom
-#     vp["c"].value = np.round(np.array([data["c"] for _,_, data in graph.edges(data=True)])) # BŠS
-#     vp["cap"].value = np.floor(np.array([data["cap"] for _,_, data in graph.edges(data=True)])) # caps floor to int
-#     print(vp["c"].value)
-#     print(vp["cap"].value)
-#     vp["B"].value = -1 * np.array(nx.incidence_matrix(graph,oriented=True).todense())
-#     def demands_to_matrix(demands,n):
-#         H = np.zeros((n,len(demands)))
-#         for k,(Ok,Dk,d) in enumerate(demands):
-#             H[Ok,k] = d
-#             H[Dk,k] = -d
-#         return H      
-#     # vp["H"].value = np.array([[1, 3, 2],
-#     #                     [0, 0, 0],
-#     #                     [0, 0, 0],
-#     #                     [-1, 0, 0],
-#     #                     [0, -3, 0],
-#     #                     [0, 0, -2]
-#     #                     ])
-#     vp["H"].value = demands_to_matrix(demands,n)
-#     print(vp["H"].value)
-#     vp["lam"].value = np.zeros(m)
-
-
-
-#     # kriterijska funkcija
-#     obj = cp.Minimize(vp["c"].T @ cp.sum(vp["X"],axis=1) + vp["lam"] @ (cp.sum(vp["X"],axis=1) - vp["cap"]))
-
-#     # omejitve
-#     constraints = [
-#         vp["B"] @ vp["X"] == vp["H"],
-#         vp["X"] >= 0   
-#     ]
-
-#     # prob = cp.Problem(obj, constraints)
-#     # # print(prob.is_dpp()) TODO
-#     return (obj, constraints, vp)
-
-
-# def run(obj,constraints,vp,graph,MAX_ITER,MAX_ITER_LR):
-#     node.Node.label = 0
-#     node.Node.label_solved = 0
-#     # node.Node.INIT_NUM_STEPS = INIT_NUM_STEPS
-#     n1 = node.Node(obj,constraints,vp,graph)
-#     L = [n1]
-
-#     n_best = None
-#     # UB = np.inf # celostevilski
-#     UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
-#     # UB = 91
-#     # TODO že na zacetku nek dober UB
-#     # UB = 24
-#     q = 0
-#     while len(L) > 0:
-#         if q >= MAX_ITER: break
-#         q += 1
-        
-#         # 1
-#         # prednost imajo otroci staršev z cap_ok == True
-#         # n = None
-#         # for n2 in L:
-#         #     if n2.parent is not None and "cap_ok" in n2.parent.sol and n2.parent.sol["cap_ok"]:
-#         #         n = n2
-#         #         L.remove(n2)
-#         #         break
-#         # if n is None:
-#         #     n = L.pop(0)
-        
-#         # 2
-#         # sortiramo najprej po cap_ok, potem pa kdo ima najbolj ohlapno mejo
-#         # def f(n_):
-#         #     if n_.parent is None:
-#         #         return (0,UB) 
-#         #     else:
-#         #         print("*",end="")
-#         #         return (~n_.parent.sol["cap_ok"], n_.parent.sol["zLD_ceil"]) # prvo (0 == True, majhna št)
-            
-#         # # print("before: ",L)
-#         # # print([f(n_) for n_ in L])
-#         # L.sort(key=lambda n_ : f(n_)) 
-#         # # print("after: ",L)
-#         # print([f(n_) for n_ in L])
-#         # n = L.pop(0)
-        
-#         # 3
-#         def f(n_):
-#             if n_.parent is None:
-#                 return (0,UB) 
-#             else:
-#                 print("*",end="")
-#                 return (~n_.parent.sol["cap_ok"], n_.parent.sol["zLD_ceil"]) # prvo (0 == True, majhna št)
-            
-#         if q % 2 == 0:
-#             L.sort(key=lambda n_ : f(n_))
-#         else:
-#             L.sort(key=lambda n_ : n_.label)
-#         print([(f(n_), n_.label) for n_ in L])
-#         n = L.pop(0)
-
-#         # values = n.solve(UB)
-#         LB = n.parent.sol["zLD_ceil"] if n.parent is not None else 0
-#         # spodnjo mejo lahko vzameš od staršev, ker bo otrok imel kvečjemu dražje rešitve
-#         # LB DOBIŠ OD STARŠEV, UB DOBIŠ OD GLOBALNE CELE REŠITVE
-#         values = n.solve(LB,UB,lam0 = None,MAX_ITER_LR=MAX_ITER_LR)
-#         try:
-#             plt.plot(values)
-#             # plt.show()
-#         except:
-#             pass
-        
-#         # print(n.sol["status"])
-#         if n.sol["status"] == "infeasible":
-#             continue
-        
-#         # zLD = n.sol["zLD"] # optimistična hevristika
-#         zLD_ceil = n.sol["zLD_ceil"] # zaokrožimo BŠS, dobimo bolj tesno mejo
-        
-#         z = n.sol["z"]
-#         # if z > UB: # ta veja bo samo še slabša (dražja)
-#         if zLD_ceil >= UB: # ta veja bo samo še slabša (dražja) ali enaka
-#             n.sol["status"] += " COST too large("+str(UB)+")"
-#             continue
-        
-#         if n.sol["cap_ok"]: # dopustna za prvotni CLP
-#             if z < UB:
-#                 UB = z
-#                 # X_best = n.sol["X"]
-#                 n_best = n
-#                 # LB_best = zLD_ceil
-#             n.sol["status"] += " FEASIBLE for I"
-#             if z == zLD_ceil:
-#                 n.sol["status"] += " OPTIMAL for I"
-#                 continue
-#         else:
-#             if n.sol["z"] == n.sol["zLD_ceil"]:
-#                 n.sol["status"] += " OPTIMAL VALUE for I, NO SOLUTION"
-#                 continue
-            
-        
-#         ch = n.get_children()
-#         L += ch
-        
-
-
-#     if len(L) == 0: print("VSE PREISKANO")
-#     print(n1)
-#     if n_best is not None:
-#         print(repr(n_best))
-#         # print(repr(n_best.sol["X"]))
-#         print(sparse.csr_matrix(n_best.sol["X"]))
-        
-
-#     # TODO bug ko "vse preiskano" pa ni optimalne rešitve
-#     return n_best # TODO podati oceno koliko je še lufta do optimuma
-
-# # def run2(obj,constraints,vp,MAX_ITER):
-# #     q = 0 # initial number of iteration
-# #     flag = 0
-# #     betha = 2
-# #     q_max = MAX_ITER # max number of iteration is q_max.
-# #     UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
-# #     LB = -np.inf  # initial upper bound and lower bound 
-# #     eps = 10**(-11)
-    
-# #     UB_min = UB
-# #     X_best = None
-    
-# #     problem = cp.Problem(obj, constraints)
-    
-# #     # node.Node.label = 0
-# #     # node.Node.INIT_NUM_STEPS = INIT_NUM_STEPS
-# #     # n = node.Node(obj,constraints,vp)
-# #     values = []
-# #     while q <= q_max and betha > eps:
-# #         problem.solve()
-# #         X = vp["X"].value
-# #         zLD = problem.value
-# #         values.append(zLD)
-# #         if np.all(np.sum(X,axis=1) <= vp["cap"].value):#X* is feasible:
-# #             UB = vp["c"].value.T @ np.sum(X,axis=1) # z
-# #             if UB < UB_min:
-# #                 UB_min = UB
-# #                 X_best = X
-                
-# #         if zLD < LB:
-# #             flag = 3
-# #         else:
-# #             if zLD - LB < eps * max(1,LB):
-# #                 flag = flag + 1
-# #             if zLD > LB:
-# #                 LB = zLD
-                
-# #         if flag > 2:
-# #             betha = betha/2
-# #             flag = 0
-
-# #         s = vp["cap"].value - np.sum(vp["X"].value,axis=1)
-# #         alpha = betha * (UB - zLD)/np.linalg.norm(s)
-# #         ll = vp["lam"].value - s * alpha
-# #         ll[ll < 0] = 0 # lambda ne mora biti negativna
-# #         vp["lam"].value = ll
-# #         q = q + 1
-# #     print(q,betha)
-# #     try:
-# #         plt.plot(values)
-# #     except:
-# #         pass
-# #     return (LB,UB,X_best)
-    
+##################################################################3
 
 def fill_maxspeed(g):
     for ke in g.edges():
@@ -314,3 +95,68 @@ def fill_maxspeed(g):
 
             print(e["highway"], end="")
             print(" is set to " + str(e["maxspeed"]))
+            
+
+#######################################################################################3
+
+def nodes_to_edges_path(inp, inverse = False):
+    # TODO to je dela za Q in le po cudezu za X, kaj ce mi ne pokaze vseh poti
+    if not inverse:
+        nl = inp
+        el = []
+        for i in range(1,len(nl)):
+            el.append((nl[i-1], nl[i]))
+        return el
+    else:
+        el = np.array(inp)
+        #print(el)
+        
+        prvi_mask = ~np.isin(el[:,0], el[:,1]) 
+        node = el[:,0][prvi_mask]
+        
+        
+        #print(node)
+        nl = [int(node)]
+        for i in range(len(el)):
+            for e in el:
+                if node == e[0]:
+                    node = e[1]
+                    nl.append(node)
+                    break
+        
+        return nl
+
+def edges_to_binary_vector(el, edges):
+    ev = np.zeros(len(edges))
+    
+    for e in el:
+        ei = edges.index(e)
+        if ei != -1:
+            ev[ei] = 1
+        
+    return(ev)
+
+
+def binary_vector_to_edges(ev, edges):
+    return list(compress(edges, ev))
+    
+def columns_to_paths(g,X,edges_mode=False):
+    # TODO a splitam dva avta al ne?
+    paths = []
+    for i in range(X.shape[1]):
+        if edges_mode:
+            paths.append(binary_vector_to_edges(X[:,i],g.edges()))
+        else:
+            paths.append(nodes_to_edges_path(binary_vector_to_edges(X[:,i],g.edges()), inverse=True))
+    return paths
+
+def split_column(col, edges):
+    el = binary_vector_to_edges(col, edges)
+    # TODO
+
+def X_to_Q(g, X):
+    pass # TODO
+    Q = None
+    for i in range(X.shape()[1]):
+        new_cols = split_column(X[:,i])
+        Q = new_cols if Q is None else np.column_stack([Q,new_cols])
