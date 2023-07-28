@@ -1,8 +1,10 @@
 from itertools import compress
+import random
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from scipy import sparse
+from collections import OrderedDict
 COLORS="brgymcbrgymc"
 
 import node
@@ -52,7 +54,7 @@ def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20)
     multi = nx.MultiDiGraph(graph)
     print("k\tCOLOR")
     for k in range(X.shape[1]):
-        path = [e for i,e in enumerate(graph.edges) if X[i,k] != 0]
+        path = [e for i,e in enumerate(graph.edges()) if X[i,k] != 0]
         multi.add_edges_from(path, color=COLORS[k])
         print(k,"\t",COLORS[k])
     # print(list(multi.edges()))
@@ -160,3 +162,44 @@ def X_to_Q(g, X):
     for i in range(X.shape()[1]):
         new_cols = split_column(X[:,i])
         Q = new_cols if Q is None else np.column_stack([Q,new_cols])
+
+###########################################################################################
+
+def dfs_edges_random(graph,source,depth_limit,skip_nodes):    
+    nodes = OrderedDict()
+    node = source
+    prev = None
+    depth = 0
+    while True:
+        if prev is not None:
+            yield (prev, node)
+            
+        if node not in nodes:
+            successors = list(graph.successors(node))
+            nodes[node] =   {
+                                "successors": random.sample(successors, len(successors)),
+                                "successor_idx":len(successors)-1,
+                                "prev": prev,
+                                "depth": depth
+                            }
+        prev = node
+        
+        b = False
+        successor_idx = nodes[prev]["successor_idx"]
+        if successor_idx >= 0 and depth+1 < depth_limit:
+            while successor_idx >= 0:
+                node = nodes[prev]["successors"][successor_idx]
+                nodes[prev]["successor_idx"] -= 1
+                successor_idx = nodes[prev]["successor_idx"]
+                if node not in nodes and node not in skip_nodes:
+                    depth += 1
+                    b = True
+                    break
+        
+        if b == False: # gremo nazaj
+            if nodes[prev]["prev"] is None:
+                print("prev was None")
+                break
+            node = nodes[prev]["prev"]
+            prev = nodes[node]["prev"]
+            depth -= 1

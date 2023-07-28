@@ -10,3 +10,7 @@ relaksacije (za branch and bound)
     LP, (+ rezalne ravnine = branch and cut)
     LR (po kapacitetah, po oh. toka)
 column generating
+
+min-cost MCFP
+
+network routing (and network design problems)
