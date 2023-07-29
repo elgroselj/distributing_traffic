@@ -520,10 +520,12 @@ def init_from_graph(graph,demands):
     
     obj_ex = cp.Minimize(1)#cp.Minimize(vp["c"].T @ cp.sum(vp["X"],axis=1))
     constraints_ex_additional = [cp.sum(vp["X"],axis=1) <= vp["cap"]]
+    
+    obj_opt = cp.Minimize(vp["c"].T @ cp.sum(vp["X"],axis=1))
 
     # prob = cp.Problem(obj, constraints)
     # # print(prob.is_dpp()) TODO
-    return (obj, constraints, obj_ex, constraints_ex_additional, vp)
+    return (obj, constraints, obj_ex, constraints_ex_additional, vp, obj_opt)
 
 
 def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MAX_ITER,MAX_ITER_LR):
@@ -610,14 +612,15 @@ def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MA
         print()
         print("Najmanjša cena ni manjša od: ",end="") # podati oceno koliko je še lufta do optimuma
         _, n = min(enumerate(todo), key=lambda tup : UB if tup[1].parent is None else tup[1].parent.sol["zLD_ceil"])
-        print(n.parent.sol["zLD_ceil"])
+        end_LB = n.parent.sol["zLD_ceil"]
+        print(end_LB)
         
     if n_best is not None:
         print(repr(n_best))
         print(sparse.csr_matrix(n_best.sol["X"]))
         
 
-    return n_best
+    return n_best, end_LB
 
 # def run2(obj,constraints,vp,MAX_ITER):
 #     q = 0 # initial number of iteration
@@ -676,8 +679,8 @@ def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MA
 
 
 def dai_solve(graph,demands,MAX_ITER,MAX_ITER_LR):
-    obj, constraints, obj_ex, constraints_ex_additional, vp = init_from_graph(graph,demands)
+    obj, constraints, obj_ex, constraints_ex_additional, vp, _  = init_from_graph(graph,demands)
 
-    n_best = run(obj,constraints,obj_ex, constraints_ex_additional, vp,graph,demands,MAX_ITER=MAX_ITER,MAX_ITER_LR=MAX_ITER_LR)
+    n_best, end_LB = run(obj,constraints,obj_ex, constraints_ex_additional, vp,graph,demands,MAX_ITER=MAX_ITER,MAX_ITER_LR=MAX_ITER_LR)
     
-    return (n_best.sol["status"], n_best.sol["X"], n_best.sol["z"])
+    return (n_best.sol["status"], n_best.sol["X"], n_best.sol["z"], "{} is LB".format(end_LB))

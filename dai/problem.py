@@ -1,4 +1,6 @@
 
+from collections import Counter
+import sys
 from matplotlib import pyplot as plt
 import networkx as nx
 import numpy as np
@@ -6,7 +8,8 @@ import random
 import time
 import copy
 
-from docplex.mp.model import Model
+# from docplex.mp.model import Model
+import cvxpy as cp
 
 from scipy.optimize import minimize
 from scipy import sparse
@@ -17,6 +20,7 @@ import helper_functions as hf
 import dai
 
 class Problem():
+    verbose = False
     def __init__(self, graph, demands):
         self.graph = graph
     
@@ -41,10 +45,15 @@ class Problem():
         return self.results
     
     
-    def print(p):
+    def print_results(p):
         for k in p.results:
             print(k + ":")
             print(p.results[k]["message"], p.results[k]["fun"], p.results[k]["success"])
+    
+    def print(stri):
+        if Problem.verbose:
+            print(stri)
+            
             
             
             
@@ -264,130 +273,6 @@ class Problem():
                 
                 p.results[str(__class__)] = {"X": X, "fun": fun(round_x), "message": res.message, "success": res.success, "paths": paths}
 
-    # class Lingen():
-    #     def get_random_node(nodes):
-    #             i = random.randint(0, len(nodes)-1)
-    #             return (i, nodes[i])
-
-    #     def get_random_path(g,z,k,path_seed=None,excluded_nodes=[]):
-    #         path_seed = path_seed if path_seed is not None else time.time()
-    #         #print("path_seed: "+str(path_seed))
-    #         random.seed(path_seed)
-            
-    #         nodes_to_use = list(set(g.nodes()) - set(excluded_nodes))
-    #         sub_g = g.subgraph(nodes_to_use)
-    #         #while(True):
-    #         for i in range(100):
-    #             # print("*",end="")
-    #             try:
-    #                 _,node = Problem.Lingen.get_random_node(nodes_to_use)
-    #                 path1 = nx.shortest_path(sub_g, z, node)
-    #                 path2 = nx.shortest_path(sub_g, node, k)
-    #             except:
-    #                 continue
-    #             path = path1+path2[1:]
-    #             kvazi_path_g = nx.DiGraph(Problem.nodes_to_edges_path(path))
-    #             path_correct = nx.shortest_path(kvazi_path_g, z, k)
-    #             # print()
-    #             return path_correct
-    #         return None
-            
-    #     def mutate(g,pop,prob=0.1,path_seed=None):
-    #         mutated_pop = []
-            
-    #         for i in range(int(np.ceil(len(pop)*prob))):
-    #             ex = random.sample(pop,1)[0]
-    #             col_id = random.randint(0,ex.shape[1]-1)
-    #             path = Problem.nodes_to_edges_path(Problem.binary_vector_to_edges(ex[:,col_id],g.edges()), inverse=True)
-    #             meja = random.randint(1,len(path)-1)
-    #             i1, node1 = Problem.Lingen.get_random_node(path[:meja])
-    #             i2, node2 = Problem.Lingen.get_random_node(path[meja:])
-    #             i2 += meja
-                
-                
-    #             new_path = Problem.Lingen.get_random_path(g,node1,node2,path_seed,excluded_nodes=path[:i1] + path[i2+1:])
-    #             if new_path is None:
-    #                 print("An alternative path wasn't found.")
-    #                 continue
-                
-    #             mutated_path = path[:i1] + new_path + path[i2+1:]
-    #             # print("path: ", path, path[:i1+1], path[i2:])
-    #             # print("new_path: ", new_path)
-    #             #print(len(mutated_path) == len(set(mutated_path)))
-                    
-                    
-    #             mutated_ex = np.copy(ex)
-    #             mutated_ex[:,col_id] = Problem.edges_to_binary_vector(Problem.nodes_to_edges_path(mutated_path), list(g.edges()))
-
-    #             ids = map(id, pop + mutated_pop)
-    #             if id(mutated_ex) not in ids:
-    #                 mutated_pop.append(mutated_ex)
-            
-    #         return mutated_pop
-        
-    #     def crossover(pop,prob):
-    #         crossovered_pop = []
-    #         for i in range(int(np.ceil(len(pop)*prob))):
-    #             ex1, ex2 = list(random.sample(pop,2))
-    #             col_id = random.randint(0,ex1.shape[1]-1)
-    #             v = ex1[:,col_id]
-    #             ex1[:,col_id] = ex2[:,col_id]
-    #             ex2[:,col_id] = v
-                
-    #             ids = map(id, pop + crossovered_pop)
-    #             if id(ex1) not in ids:
-    #                 crossovered_pop.append(ex1)
-    #             if id(ex2) not in ids:
-    #                 crossovered_pop.append(ex2)
-                
-    #         return crossovered_pop
-        
-        
-        
-    #     def best(pop, f, num):
-    #         sorted_pop = sorted(pop, key = lambda ex: f(ex))
-    #         return sorted_pop[:min(num,len(pop))]
-                
-            
-    #     def solve(p,path_seed=None,num_iter=10,num_best=10,mutation_prob=0.5,crossover_prob=0.1):
-            
-    #         M = Problem.sparse_incidence_matrix(p.g.nodes(),p.g.edges())
-    #         M_ZK = Problem.sparse_incidence_matrix(p.g.nodes(),[(z,k) for z, k, _ in p.ZK],factor=p.a)
-    #         M_ZK_dupl = np.repeat(M_ZK.todense(), p.a, axis=1)
-            
-    #         f_t = lambda ex: np.sum(np.dot(ex.T,p.t))
-    #         f_c = lambda ex: abs(np.sum(x for x in list(p.c - np.sum(ex, axis=1)) if x < 0))
-                
-    #         f_sums = lambda ex: abs(np.sum(M@ex - M_ZK_dupl))
-    #         f = lambda ex: f_t(ex) + 1000 * f_c(ex) + 1000 * f_sums(ex)
-            
-    #         ex0 = None
-    #         for z,k,a in p.ZK:
-    #             #path = nx.shortest_path(p.g, z, k)
-    #             path = Problem.Lingen.get_random_path(p.g, z, k, path_seed)
-    #             col = Problem.edges_to_binary_vector(Problem.nodes_to_edges_path(path), list(p.g.edges()))
-    #             for i in range(a):
-    #                 ex0 = col if ex0 is None else np.column_stack([ex0,col])
-            
-    #         pop = [ex0]
-            
-    #         for i in range(num_iter):
-    #             #print(len(pop))
-                
-    #             mutated_pop = Problem.Lingen.mutate(p.g,pop,prob=mutation_prob)
-                
-    #             crossovered_pop = []
-    #             crossovered_pop = Problem.Lingen.crossover(pop+mutated_pop,prob=crossover_prob)
-                
-    #             best_pop = Problem.Lingen.best(pop+mutated_pop+crossovered_pop,f,num=num_best)
-    #             pop = best_pop
-                
-    #         best_pop = Problem.Lingen.best(pop+mutated_pop+crossovered_pop,f,num=1)
-    #         best_ex = best_pop[0]
-    #         paths = Problem.columns_to_paths(p.g,best_ex)
-    #         print("f_c_sums: ", f_c(best_ex), f_sums(best_ex))
-    #         p.results[str(__class__)] = {"X": best_ex, "fun": f_t(best_ex), "message": "glej success", "success": f_c(best_ex) + f_sums(best_ex) == 0, "paths": paths}
-
 
     class Greedy():
         def update_path(paths, generators, path_ind):
@@ -499,9 +384,18 @@ class Problem():
     class Dai_solver():
         
         def solve(p,MAX_ITER,MAX_ITER_LR):
-            status, X, cost = dai.dai_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
-            res = Problem.Result(status, X, cost)
+            if not Problem.verbose:
+                save_stdout = sys.stdout
+                sys.stdout = open('trash', 'w')
+            ###############################
+            status, X, cost, message = dai.dai_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
+            res = Problem.Result(status, X, cost, message)
             p.results[str(__class__)] = res
+            
+            #################################
+            if not Problem.verbose:
+                sys.stdout = save_stdout
+            
             return res
             
 
@@ -818,7 +712,8 @@ class Problem():
                 self.cost = (c @ edge_flow.T)[0,0]
                 
                 return self.over_cap, self.cost
-                
+            
+                      
                 
             def get_child(self,evaluated):
                 generators = Problem.Descent.Node.generators
@@ -848,7 +743,7 @@ class Problem():
                         # pi ... idx poti znotraj skupine
                         mat = self.Q.copy()
                         # over_cap_count_before = sum([len(self.over_cap[e]) for e in self.over_cap])
-                        paths_generator = Problem.Descent.generate_path(paths,generators,ki)
+                        paths_generator = Problem.Descent.generate_path(paths,generators,ki,max_num_paths=10000)
                         for path_id, path in enumerate(paths_generator):
                             path_vec = hf.edges_to_binary_vector(hf.nodes_to_edges_path(path),list(graph.edges()))
                             mat[:,over_cap_path_id] = path_vec
@@ -858,7 +753,6 @@ class Problem():
                             diff = edge_flow-cap
                             over_cap_count = diff[diff > 0].sum()
                             if over_cap_count < over_cap_count_before:
-                                print(path)
                                 path_ids = list(self.path_ids)
                                 path_ids[ki] = list(path_ids[ki])
                                 path_ids[ki][pi] = path_id
@@ -866,18 +760,89 @@ class Problem():
                                 path_ids[ki] = tuple(path_ids[ki])
                                 ch = Problem.Descent.Node(path_ids,parent=self)
                                 if ch in evaluated:
-                                    print("ch was in evaluated")
                                     Problem.Descent.Node.label -= 1
                                     continue
                                     
                                 self.children.append(ch)
-                                print("success")
+                                Problem.print("success")
                                 yield ch
                             # elif over_cap_count == over_cap_count_before:
                             # korak v stran TODO
-                            print("*alternative paths exhausted")
-                    print("**over_cap_paths exhausted")
-                print("***over_cap_edges exhausted")
+                            # Problem.print("*alternative paths exhausted")
+                    Problem.print("**over_cap_paths exhausted")
+                Problem.print("***over_cap_edges exhausted")
+                yield None
+            
+            
+            # def get_child(self,evaluated):
+            #     max_num_children = 5
+            #     if len(self.children) > max_num_children:
+            #         yield None
+                
+                
+            #     print("lebanlkn")
+            #     generators = Problem.Descent.Node.generators
+            #     paths = Problem.Descent.Node.paths
+            #     graph = Problem.Descent.Node.graph
+            #     demands = Problem.Descent.Node.demands
+                
+            #     c = np.array([graph.edges()[e]["c"] for e in graph.edges()])
+            #     cap = np.array([graph.edges()[e]["cap"] for e in graph.edges()])
+                
+            #     edge_flow_before = self.Q.sum(axis=1).T
+            #     diff_before = edge_flow_before-cap
+            #     over_cap_count_before = diff_before[diff_before > 0].sum()
+                
+            #     print("lkajnčkjfadčjk")
+                
+            #     glob_path_id = -1
+            #     conflict_paths= []
+            #     for ki, k in enumerate(self.path_ids):
+            #         print()
+            #         for pi, path_id in enumerate(k):
+            #             print("#",end="")
+            #             glob_path_id += 1
+            #             q = self.Q[:,glob_path_id]
+            #             mask = (q!=0).todense().T & (diff_before > 0)# v poti in prekoračene
+            #             conflict_points_of_path = (1 / edge_flow_before[mask]) @ diff_before[mask].T
+            #             if mask.any() and conflict_points_of_path[0,0] != 0:
+            #                 conflict_paths.append((conflict_points_of_path[0,0],glob_path_id,ki,pi))
+            #     random.shuffle(conflict_paths)
+            #     conflict_paths = sorted(conflict_paths,key=lambda x:x[0],reverse=True)
+            #     # TODO sort by cost
+            #     pass
+                
+            #     for record in conflict_paths:
+            #         _,glob_path_id,ki,pi = record
+            #         paths_generator = Problem.Descent.generate_path(paths,generators,ki)
+            #         mat = self.Q.copy()
+            #         counter = 0
+            #         for path_id, path in enumerate(paths_generator):
+            #             counter += 1
+            #             print("*",end="")
+            #             path_vec = hf.edges_to_binary_vector(hf.nodes_to_edges_path(path),list(graph.edges()))
+            #             mat[:,glob_path_id] = path_vec
+                        
+            #             edge_flow = mat.sum(axis=1).T
+            #             diff = edge_flow-cap
+            #             over_cap_count = diff[diff > 0].sum()
+            #             if over_cap_count < over_cap_count_before:
+            #                 path_ids = Problem.Descent.change_path_id(self.path_ids, ki, pi, path_id)
+            #                 ch = Problem.Descent.Node(path_ids,parent=self)
+            #                 if ch in evaluated:
+            #                     Problem.print("ch was in evaluated")
+            #                     Problem.Descent.Node.label -= 1
+            #                     continue
+                                
+            #                 self.children.append(ch)
+            #                 Problem.print("success")
+            #                 yield ch
+            #                 if over_cap_count == 0:
+            #                         break
+            #             max_num_iter = 200
+            #             if counter > max_num_iter:
+            #                 break
+            #     yield None
                             
                                 
                                 
@@ -902,90 +867,102 @@ class Problem():
             def __repr__(self) -> str:
                 return "({}):{} {} = {}".format(self.level, self.label, repr(self.path_ids),self.over_cap)
         
+        
+        def change_path_id(path_ids_, ki, pi, new_path_id):
+            path_ids = list(path_ids_)
+            path_ids[ki] = list(path_ids[ki])
+            path_ids[ki][pi] = new_path_id
+            path_ids[ki] = sorted(path_ids[ki])
+            path_ids[ki] = tuple(path_ids[ki])
+            return path_ids
+        
         def get_i_th_path(paths, generators, k, i):
             while len(paths[k]) <= i:
                 next_path = next(generators[k])
                 paths[k].append(next_path)
             return paths[k][i]
         
-        def generate_path(paths,generators, k):
+        def generate_path(paths,generators, k,max_num_paths=None):
             i=0
             while True:
                 path = Problem.Descent.get_i_th_path(paths, generators, k, i)
                 yield path
                 i += 1
+                if max_num_paths is not None and i >= max_num_paths: break
 
-        # def init_sol():
-        #     X_dict = {}
-        #         solution_found = True
-        #         _,t = self.vp["H"].shape
-        #         _,m = self.vp["B"].shape 
+        def init_sol(graph,demands):
+            X_dict = {}
+            _,t = len(demands)
+            _,m = graph.number_of_edges()
+            
+            remaining_cap = {e: graph.edges()[e]["cap"] for e in graph.edges()}
+            nx.set_edge_attributes(graph, remaining_cap, "remaining_cap")
+            alt_c = {e: graph.edges()[e]["c"] for e in graph.edges()}
+            nx.set_edge_attributes(graph, alt_c, "alt_c")
+            for k in range(t):
+                Ok, Dk, num_k = demands[k]
                 
-        #         remaining_cap = {e: graph.edges()[e]["cap"] for e in graph.edges()}
-        #         for k in range(t):
-        #             Ok, Dk, num_k = demands[k]
-        #             # ubf
-        #             ubf = get_lower_upper_bounds_on_flow(k,lower=False)
-        #             remaining_cap_k = dict(remaining_cap)
-        #             for e in ubf:
-        #                 remaining_cap_k[e] = min(remaining_cap[e], ubf[e])
-        #             nx.set_edge_attributes(graph, remaining_cap_k, "remaining_cap")
+                On = list(graph.nodes())[Ok]
+                Dn = list(graph.nodes())[Dk]
                 
+                for ki in range(num_k):
                     
-        #             # lbf
-        #             lbf = get_lower_upper_bounds_on_flow(k, lower=True)
-                    
-        #             c = {e: graph.edges()[e]["c"] for e in graph.edges()}
-        #             for e in graph.edges():
-        #                 if graph.edges()[e]["remaining_cap"] == 0:
-        #                     c[e] = np.inf # nasičene / s kapaciteto 0 naj bodo neskončno drage
-        #             alt_c = {e: (0 if e in lbf else c[e]) for e in c} # te k rabijo bit uporabljene naj bojo zastonj
-                    
-        #             nx.set_edge_attributes(graph, alt_c, "alt_c")
-                    
-        #             On = list(graph.nodes())[Ok]
-        #             Dn = list(graph.nodes())[Dk]
-                    
-        #             for ki in range(num_k):
+                    path_of_nodes = nx.dijkstra_path(graph,On,Dn,"alt_c")
+                    path = hf.nodes_to_edges_path(path_of_nodes)
+                    # length = sum([graph.edges()[e]["c"] for e in path])
+                    # Problem.print(length)
+                    etoei = lambda e : list(graph.edges()).index(e)
+                    path_dict = {(etoei(e),k):1 for e in path}
+                    X_dict = Counter(X_dict) + Counter(path_dict)
+                                        
+                    for e in path:
+                        graph.edges()[e]["remaining_cap"] -= 1
+                        if graph.edges()[e]["remaining_cap"] == 0:
+                            graph.edges()[e]["alt_c"] = np.inf
+                                                
+            X = sparse.dok_matrix((m,t))
+            for a,k in X_dict:
+                X[a,k] = X_dict[(a,k)]
+            X = X.todense()
+        
+        def lower_the_cost(node_, graph, paths, generators, feasible):
+            c = np.array([graph.edges()[e]["c"] for e in graph.edges()])
+            cap = np.array([graph.edges()[e]["cap"] for e in graph.edges()])
+            
+            node = node_
+
+            while True:
+                Problem.print("iter_of_lowering")
+                glob_path_ind = -1
+                mini = (node.cost, node.path_ids)
+                for ki, k in enumerate(node.path_ids):
+                    for pi, path_id in enumerate(k):
+                        mat = node.Q.copy()
+                        glob_path_ind += 1
+                        for path_id_lower in range(path_id):
+                            path_lower = Problem.Descent.get_i_th_path(paths,generators,ki,path_id_lower)
+                            path_vec_lower = hf.edges_to_binary_vector(hf.nodes_to_edges_path(path_lower),list(graph.edges()))
+                            mat[:,glob_path_ind] = path_vec_lower
+                            
+                            # edge_flow = np.sum(mat, axis=1).T
+                            edge_flow = mat.sum(axis=1).T
+                            diff = edge_flow-cap
+                            over_cap_count = diff[diff > 0].sum()
+                            if over_cap_count == 0:
+                                cost = (c @ edge_flow.T)[0,0]
+                                if cost < mini[0]:
+                                    mini = (cost, Problem.Descent.change_path_id(node.path_ids,ki,pi,path_id_lower))
+                                break
+                ch = Problem.Descent.Node(mini[1], parent=node)
+                ch.evaluate()
+                if ch.cost == node.cost:
+                    return node
+                if ch in feasible:
+                    return ch
+                node = ch     
                         
-        #                 path_of_nodes = nx.dijkstra_path(graph,On,Dn,"alt_c")
-        #                 path = nodes_to_edges_path(path_of_nodes)
-        #                 length = sum([graph.edges()[e]["alt_c"] for e in path])
-        #                 print(length)
-        #                 etoei = lambda e : list(graph.edges()).index(e)
-        #                 path_dict = {(etoei(e),k):1 for e in path}
-        #                 X_dict = Counter(X_dict) + Counter(path_dict)
-                        
-        #                 for e in path:
-        #                     if e in lbf:
-        #                         lbf[e] -= 1
-        #                         if lbf[e] == 0:
-        #                             del lbf[e]
-        #                             graph.edges()[e]["alt_c"] = alt_c[e]
-                        
-        #                 for e in path:
-        #                     graph.edges()[e]["remaining_cap"] -= 1
-        #                     remaining_cap[e] -= 1
-        #                     if graph.edges()[e]["remaining_cap"] == 0:
-        #                         graph.edges()[e]["alt_c"] = np.inf
-        #                     elif remaining_cap[e] < 0:
-        #                         # not solution
-        #                         solution_found = False
-        #                         break
-                
-        #             if len(lbf) > 0:
-        #                 # not solution    
-        #                 print("lbf not empty")
-        #                 solution_found = False
-        #                 break
-                             
-        #         if solution_found:
-        #             print(" heuristic success")
-        #             sol["status"] += " heuristic "  
-        #             X = sparse.dok_matrix((m,t))
-        #             for a,k in X_dict:
-        #                 X[a,k] = X_dict[(a,k)]
-        #             X = X.todense()
+            
+            
 
 
         def solve(p, max_num_iter = 10):
@@ -1011,38 +988,44 @@ class Problem():
             while st < max_num_iter:
                 st += 1
                 if node is None:
-                    print("node was None")
+                    Problem.print("node was None")
                     break
                 
                 if node not in evaluated:
+                    Problem.print(("len_feasible:",len(feasible)))
                     over_cap, _ = node.evaluate()
-                    plt.show()
                     evaluated.add(node)
                     
                     if len(over_cap) == 0: # dopustna rešitev
                         # izboljšaj kar se da TODO
-                        feasible.add(node)
+                        improved_node = Problem.Descent.lower_the_cost(node,p.graph,paths, generator,feasible)
+                        if improved_node != node:
+                            Problem.print("node improved")
+                        if improved_node not in feasible:
+                            feasible.add(improved_node)
+                        if improved_node.cost <= node0.cost:
+                            print("optimal")
+                            break
                         node = node.parent
-                # hf.plot_solution_graph(p.graph,node.X,with_labels=True,font_size=10,figure_size=(20,20))    
-                try:
-                    print(st-1)
-                    ch = next(node.get_child(evaluated))
-                    print(st-1)
-                    print(node,ch)
-                except:
-                    print("no more ch")
+                        continue
+                # hf.plot_solution_graph(p.graph,node.X,with_labels=True,font_size=10,figure_size=(20,20))    ch = next(node.get_child(evaluated))
+    
+                Problem.print(st-1)
+                ch = next(node.get_child(evaluated))
+                Problem.print(st-1)
+                Problem.print((node,ch))
+                if ch is None:
+                    Problem.print("no more ch")
                     node = node.parent
                     continue
                     
-                # if ch in evaluated:
-                #     print("already evaluated")
-                #     continue
                 node = ch
                  
-            print("len_evaluated:", len(evaluated))               
-            print("len_feasible:", len(feasible))
-            tree = node0.print_tree()
-            print(tree)
+            Problem.print("len_evaluated:"+ str(len(evaluated)))               
+            Problem.print("len_feasible:"+ str(len(feasible)))
+            if Problem.verbose:
+                tree = node0.print_tree()
+                print(tree)
                 
             message = ""
             if len(feasible) == 0:
@@ -1051,7 +1034,7 @@ class Problem():
                 cost = None
             else:
                 best_feasible_node = min(feasible, key= lambda node: node.cost)
-                best_node = min(evaluated,  key= lambda node: node.cost)
+                best_node = node0
                 if best_feasible_node.cost <= best_node.cost:
                     status = "optimal"
                 else:
@@ -1063,6 +1046,29 @@ class Problem():
             res = Problem.Result(status, X, cost, message)
             p.results[str(__class__)] = res
             return res
+        
+    class Optimal_cvxpy:
+        def solve(p,SOLVER="GLPK_MI"):
+            if not Problem.verbose:
+                save_stdout = sys.stdout
+                sys.stdout = open('trash', 'w')
+            ###############################
+            _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
             
+            
+            #################################
+            if not Problem.verbose:
+                sys.stdout = save_stdout
+                
+            
+            # _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
+            problem = cp.Problem(obj_opt, constraints + constraints_ex_additional)
+            problem.solve(verbose=True,solver=SOLVER)
+            
+            status, X, cost = (problem.status, vp["X"].value, problem.value)
+                
+            res = Problem.Result(status, X, cost)
+            p.results[str(__class__)] = res
+            return res
 
                 

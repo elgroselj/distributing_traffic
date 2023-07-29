@@ -12,11 +12,13 @@ importlib.reload(gg)
 
 seed = random.randint(0,1000)
 seed = 204
+seed = 205
 random.seed(seed)
 print("seed: ", seed)
 
 
 # graph, demands = gg.generate_random_graph(n_max=20,t=2,k_num_max=2,cap_max=2,density_param=1)
+# # graph, demands = gg.generate_random_graph(n_max=20,t=2,k_num_max=2,cap_max=2,density_param=1,c_max=10)
 # graph, demands = gg.generate_random_graph(n_max=10,t=2,k_num_max=2,cap_max=2,density_param=1,c_max=10)
 # graph, demands = gg.generate_random_graph(n_max=1000,t=2,k_num_max=2,cap_max=2,density_param=1,c_max=10)
 
@@ -24,14 +26,17 @@ print("seed: ", seed)
 
 #################################################################################3
 
-# graph = gg.place_to_nx("Castenaso")
-graph = gg.place_to_nx("helsinki")
+graph = gg.place_to_nx("Castenaso")
+# graph = gg.place_to_nx("helsinki")
 
 
 # demands = [(1,3,2),(13,6,3)]
-# demands = [(1,0,2)]
+#demands = [(1,0,2)]
+demands = [(13,15,2),(7,3,2)]
 
-demands = [(6,20,1),(6,100,3),(6,105,2)]
+# demands = [(6,20,1),(6,100,3),(6,105,2)]
+
+#############################################################################33
 
 print(graph.number_of_nodes())
 # hf.plot_multigraph(graph,with_labels=True, font_size=10)
@@ -47,13 +52,30 @@ print(graph.number_of_nodes())
 #     print(e)
 
 p = pr.Problem(graph,demands)
-res = pr.Problem.Dai_solver.solve(p,MAX_ITER = 1,MAX_ITER_LR = 50)
-hf.plot_solution_graph(graph,res.X,with_labels=True,font_size=10,figure_size=(20,20))
-print(res)
 
-# p = pr.Problem(graph,demands)
-res = pr.Problem.Descent.solve(p,max_num_iter = 10)
+
+# res = pr.Problem.Optimal_cvxpy.solve(p)
+# hf.plot_solution_graph(graph,res.X,with_labels=True,font_size=10,figure_size=(20,20))
+# print(res)
+
+# res = pr.Problem.Optimal_cvxpy.solve(p,SOLVER="CBC")
+# hf.plot_solution_graph(graph,res.X,with_labels=True,font_size=10,figure_size=(20,20))
+# print(res)
+
+# res = pr.Problem.Optimal_cvxpy.solve(p,SOLVER="GUROBI")
+# hf.plot_solution_graph(graph,res.X,with_labels=True,font_size=10,figure_size=(20,20))
+# print(res)
+
+
+# res = pr.Problem.Dai_solver.solve(p,MAX_ITER = 10,MAX_ITER_LR = 50)
+# hf.plot_solution_graph(graph,res.X,with_labels=True,font_size=10,figure_size=(20,20))
+# print(res)
+
+pr.Problem.verbose = True
+res = pr.Problem.Descent.solve(p,max_num_iter = 100)
 print(res)
 if res.X is not None:
     hf.plot_solution_graph(graph,res.X,with_labels=True,font_size=10,figure_size=(20,20))
+
+print(p.results)
 
