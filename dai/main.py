@@ -20,21 +20,22 @@ print("seed: ", seed)
 # graph, demands = gg.generate_random_graph(n_max=20,t=2,k_num_max=2,cap_max=2,density_param=1)
 # # graph, demands = gg.generate_random_graph(n_max=20,t=2,k_num_max=2,cap_max=2,density_param=1,c_max=10)
 # graph, demands = gg.generate_random_graph(n_max=10,t=2,k_num_max=2,cap_max=2,density_param=1,c_max=10)
-# graph, demands = gg.generate_random_graph(n_max=1000,t=2,k_num_max=2,cap_max=2,density_param=1,c_max=10)
+graph, demands = gg.generate_random_graph(n_max=1000,t=2,k_num_max=10,cap_max=2,density_param=1,c_max=10)
 
 
 
 #################################################################################3
 
-graph = gg.place_to_nx("Castenaso")
+# graph = gg.place_to_nx("Castenaso")
 # graph = gg.place_to_nx("helsinki")
 
 
 # demands = [(1,3,2),(13,6,3)]
-#demands = [(1,0,2)]
-demands = [(13,15,2),(7,3,2)]
+# demands = [(1,0,2)]
+# demands = [(13,15,2),(7,3,2)]
 
 # demands = [(6,20,1),(6,100,3),(6,105,2)]
+# demands = [(6,20,1),(60,100,3),(6,105,2)]
 
 #############################################################################33
 
@@ -67,11 +68,12 @@ p = pr.Problem(graph,demands)
 # print(res)
 
 
-# res = pr.Problem.Dai_solver.solve(p,MAX_ITER = 10,MAX_ITER_LR = 50)
-# hf.plot_solution_graph(graph,res.X,with_labels=True,font_size=10,figure_size=(20,20))
-# print(res)
-
+res = pr.Problem.Dai_solver.solve(p,MAX_ITER = 1,MAX_ITER_LR = 50)
 pr.Problem.verbose = True
+hf.plot_solution_graph(graph,res.X,with_labels=True,font_size=10,figure_size=(20,20))
+print(res)
+
+pr.Problem.verbose = False
 res = pr.Problem.Descent.solve(p,max_num_iter = 100)
 print(res)
 if res.X is not None:

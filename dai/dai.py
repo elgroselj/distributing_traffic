@@ -112,9 +112,9 @@ class Node:
         else:
             while q <= q_max and beta > eps:
                 ###############################
-                # X, status, zLD, s = ss.dijkstra1(self.vp, graph, demands, alpha)
+                X, status, zLD, s = ss.dijkstra1(self.vp, graph, demands, alpha)
                 # X, status, zLD, s = ss.dijkstra2(self.vp, graph, demands, self.U, self.L, alpha)
-                X, status, zLD, s = ss.cvxpy_linprog_LR(self.problem, self.vp, alpha)
+                # X, status, zLD, s = ss.cvxpy_linprog_LR(self.problem, self.vp, alpha)
                 
                 ###############################################
                 if status == "infeasible":
@@ -621,61 +621,6 @@ def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MA
         
 
     return n_best, end_LB
-
-# def run2(obj,constraints,vp,MAX_ITER):
-#     q = 0 # initial number of iteration
-#     flag = 0
-#     beta = 2
-#     q_max = MAX_ITER # max number of iteration is q_max.
-#     UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
-#     LB = -np.inf  # initial upper bound and lower bound 
-#     eps = 10**(-11)
-    
-#     UB_min = UB
-#     X_best = None
-    
-#     problem = cp.Problem(obj, constraints)
-    
-#     # Node.label = 0
-#     # Node.INIT_NUM_STEPS = INIT_NUM_STEPS
-#     # n = Node(obj,constraints,vp)
-#     values = []
-#     while q <= q_max and beta > eps:
-#         problem.solve()
-#         X = vp["X"].value
-#         zLD = problem.value
-#         values.append(zLD)
-#         if np.all(np.sum(X,axis=1) <= vp["cap"].value):#X* is feasible:
-#             UB = vp["c"].value.T @ np.sum(X,axis=1) # z
-#             if UB < UB_min:
-#                 UB_min = UB
-#                 X_best = X
-                
-#         if zLD < LB:
-#             flag = 3
-#         else:
-#             if zLD - LB < eps * max(1,LB):
-#                 flag = flag + 1
-#             if zLD > LB:
-#                 LB = zLD
-                
-#         if flag > 2:
-#             beta = beta/2
-#             flag = 0
-
-#         s = vp["cap"].value - np.sum(vp["X"].value,axis=1)
-#         alpha = beta * (UB - zLD)/np.linalg.norm(s)
-#         ll = vp["lam"].value - s * alpha
-#         ll[ll < 0] = 0 # lambda ne mora biti negativna
-#         vp["lam"].value = ll
-#         q = q + 1
-#     print(q,beta)
-#     try:
-#         plt.plot(values)
-#     except:
-#         pass
-#     return (LB,UB,X_best)
-
 
 
 def dai_solve(graph,demands,MAX_ITER,MAX_ITER_LR):

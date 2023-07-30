@@ -115,7 +115,7 @@ def generate_random_graph(n_max,t,k_num_max,cap_max,density_param=0.5,c_max=100)
     
     
     print("demands: ", demands)
-    hf.plot_multigraph(graph, with_labels=True,font_size=10,figure_size=(20,20))
+    # hf.plot_multigraph(graph, with_labels=True,font_size=10,figure_size=(20,20))
     
     return (graph, demands)
               
