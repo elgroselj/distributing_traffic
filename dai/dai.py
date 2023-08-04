@@ -608,6 +608,8 @@ def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MA
     
     if len(todo) == 0:
         print("VSE PREISKANO")
+        end_LB = UB
+        print(end_LB)
     else:
         print()
         print("Najmanjša cena ni manjša od: ",end="") # podati oceno koliko je še lufta do optimuma

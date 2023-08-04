@@ -2,6 +2,7 @@ from collections import Counter
 import networkx as nx
 import numpy as np
 from scipy import sparse
+import helper_functions as hf
 
 def dijkstra1(vp, graph, demands, alpha):
     X_dict = {}
@@ -45,7 +46,66 @@ def dijkstra1(vp, graph, demands, alpha):
     X = np.array(X.todense())
     
     zLD = new_c.T @ np.sum(X,axis=1) - vp["lam"].value.T @ vp["cap"].value
-    zLD = int(zLD[0])
+    # zLD = int(zLD[0])
+    s = vp["cap"].value - np.sum(X,axis=1)
+    
+    ll = vp["lam"].value - s * alpha
+    ll[ll < 0] = 0 # lambda ne mora biti negativna
+    vp["lam"].value = ll
+    
+    return (X, status, zLD, s)
+
+
+
+def dijkstra11(vp, graph, demands, alpha, without_edges):
+    X_dict = {}
+    status = "feasible"
+    
+    _,m = vp["B"].shape 
+    _,t = vp["H"].shape                
+    new_c = vp["c"].value + vp["lam"].value
+    alt_c = {e: new_c[ei] for ei, e in enumerate(graph.edges())}
+    
+    for ei in without_edges:
+        e = list(graph.edges())[ei]
+        alt_c[e] = np.inf
+        
+    nx.set_edge_attributes(graph, alt_c, "alt_c")
+    
+    for k in range(t):
+        Ok, Dk, num_k = demands[k]
+        
+        On = list(graph.nodes())[Ok]
+        Dn = list(graph.nodes())[Dk]
+        
+        try:
+            path_of_nodes = nx.dijkstra_path(graph,On,Dn,"alt_c")
+        except:
+            print("path does not exist")
+            status = "infeasible"
+            break
+        
+        path = hf.nodes_to_edges_path(path_of_nodes)
+        length = sum([graph.edges()[e]["alt_c"] for e in path])
+        if length == np.inf:
+            # tj uporabili smo prepovedano povezavo
+            X = None
+            status = "infeasible"
+            zLD = None
+            s = None
+            return (X, status, zLD, s)
+        # print(length)
+        etoei = lambda e : list(graph.edges()).index(e)
+        path_dict = {(etoei(e),k):num_k for e in path}
+        X_dict = Counter(X_dict) + Counter(path_dict)
+        
+    X = sparse.dok_matrix((m,t))
+    for a,k in X_dict:
+        X[a,k] = X_dict[(a,k)]
+    X = np.array(X.todense())
+    
+    zLD = new_c.T @ np.sum(X,axis=1) - vp["lam"].value.T @ vp["cap"].value
+    # zLD = int(zLD[0])
     s = vp["cap"].value - np.sum(X,axis=1)
     
     ll = vp["lam"].value - s * alpha
@@ -135,5 +195,114 @@ def cvxpy_linprog_LR(problem, vp,alpha):
     ll = vp["lam"].value - s * alpha
     ll[ll < 0] = 0 # lambda ne mora biti negativna
     vp["lam"].value = ll
+    
+    return (X, status, zLD, s)
+
+def dijkstra0(vp, graph, demands, alpha):
+    X_dict = {}
+    status = "feasible"
+    
+    _,m = vp["B"].shape 
+    _,t = vp["H"].shape                
+    new_c = vp["c"] + vp["lam"]
+    alt_c = {e: new_c[0,ei] for ei, e in enumerate(graph.edges())} 
+    nx.set_edge_attributes(graph, alt_c, "alt_c")
+    
+    for k in range(t):
+        Ok, Dk, num_k = demands[k]
+        
+        On = list(graph.nodes())[Ok]
+        Dn = list(graph.nodes())[Dk]
+        
+        try:
+            path_of_nodes = nx.dijkstra_path(graph,On,Dn,"alt_c")
+        except:
+            print("path does not exist")
+            status = "infeasible"
+            break
+        
+        def nodes_to_edges_path(inp):
+            nl = inp
+            el = []
+            for i in range(1,len(nl)):
+                el.append((nl[i-1], nl[i]))
+            return el
+        path = nodes_to_edges_path(path_of_nodes)
+        # length = sum([graph.edges()[e]["alt_c"] for e in path])
+        # print(length)
+        etoei = lambda e : list(graph.edges()).index(e)
+        path_dict = {(etoei(e),k):num_k for e in path}
+        X_dict = Counter(X_dict) + Counter(path_dict)
+        
+    X = sparse.dok_matrix((m,t))
+    for a,k in X_dict:
+        X[a,k] = X_dict[(a,k)]
+    X = X.tolil()
+    
+    # zLD = new_c.T @ np.sum(X,axis=1) - vp["lam"].T @ vp["cap"]
+    zLD = (new_c@X.sum(axis=1))[0,0] - (vp["lam"] @ vp["cap"])[0]
+    # zLD = int(zLD[0])
+    s = vp["cap"] - X.sum(axis=1).T
+    
+    ll = vp["lam"] - s * float(alpha)
+    ll = vp["lam"] - s * float(alpha)
+    ll[ll < 0] = 0 # lambda ne mora biti negativna
+    vp["lam"] = ll
+    
+    return (X, status, zLD, s)
+
+def astar(vp, graph, demands, alpha):
+    
+    X_dict = {}
+    status = "feasible"
+    
+    _,m = vp["B"].shape 
+    _,t = vp["H"].shape                
+    new_c = vp["c"] + vp["lam"]
+    alt_c = {e: new_c[0,ei] for ei, e in enumerate(graph.edges())} 
+    nx.set_edge_attributes(graph, alt_c, "alt_c")
+    
+    for k in range(t):
+        Ok, Dk, num_k = demands[k]
+        
+        On = list(graph.nodes())[Ok]
+        Dn = list(graph.nodes())[Dk]
+        
+        try:
+            # path_of_nodes = nx.dijkstra_path(graph,On,Dn,"alt_c")
+            dist = lambda a,b: ((graph.nodes()[a]["x"] - graph.nodes()[b]["x"])**2 + (graph.nodes()[a]["y"] - graph.nodes()[b]["y"])**2)**0.5
+            path_of_nodes = nx.astar_path(graph,On,Dn,dist,"alt_c")
+        except:
+            print("path does not exist")
+            status = "infeasible"
+            break
+        
+        def nodes_to_edges_path(inp):
+            nl = inp
+            el = []
+            for i in range(1,len(nl)):
+                el.append((nl[i-1], nl[i]))
+            return el
+        path = nodes_to_edges_path(path_of_nodes)
+        # length = sum([graph.edges()[e]["alt_c"] for e in path])
+        # print(length)
+        etoei = lambda e : list(graph.edges()).index(e)
+        path_dict = {(etoei(e),k):num_k for e in path}
+        X_dict = Counter(X_dict) + Counter(path_dict)
+        
+    X = sparse.dok_matrix((m,t))
+    for a,k in X_dict:
+        X[a,k] = X_dict[(a,k)]
+    X = X.tolil()
+    
+    # zLD = new_c.T @ np.sum(X,axis=1) - vp["lam"].T @ vp["cap"]
+    zLD = (new_c@X.sum(axis=1))[0,0] - (vp["lam"] @ vp["cap"])[0]
+    # zLD = int(zLD[0])
+    s = vp["cap"] - X.sum(axis=1).T
+    
+    ll = vp["lam"] - s * float(alpha)
+    ll = vp["lam"] - s * float(alpha)
+    ll[ll < 0] = 0 # lambda ne mora biti negativna
+    vp["lam"] = ll
     
     return (X, status, zLD, s)

@@ -4,25 +4,26 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from scipy import sparse
-from collections import OrderedDict
-COLORS="brgymcbrgymc"
+from collections import Counter, OrderedDict
+COLORS="brgymc"
 
 import node
 import importlib
 importlib.reload(node)
 
 
-def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20)):
+def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with_arrows=True):
     plt.figure(figsize=figure_size)
     G = nx.MultiDiGraph(graph)
     try:
         pos = {n:(G.nodes[n]["x"],G.nodes[n]["y"]) for n in G.nodes()}
     except:
-        # pos = nx.circular_layout(G)
+        
         try:
             pos = nx.planar_layout(G)
         except:
-            pos = nx.circular_layout(G)
+            # pos = nx.circular_layout(G)
+            pos = nx.spring_layout(G)
             
     nx.draw_networkx_nodes(G, pos, node_size=0, alpha=1)
     nx.draw_networkx_labels(G, pos, font_size=font_size)
@@ -32,7 +33,7 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20)):
         ax.annotate("",
                     xy=pos[e[1]], xycoords='data',
                     xytext=pos[e[0]], textcoords='data',
-                    arrowprops=dict(arrowstyle="->", color=edge_color,
+                    arrowprops=dict(arrowstyle="->" if with_arrows == True else "-", color=edge_color,
                                     shrinkA=5, shrinkB=5,
                                     patchA=None, patchB=None,
                                     connectionstyle="arc3,rad=rrr".replace('rrr', str(0.1 * (e[2] + 1))
@@ -50,22 +51,22 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20)):
     plt.axis('off')
     plt.show()
 
-def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20)):
+def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20),with_arrows=True):
     multi = nx.MultiDiGraph(graph)
     print("k\tCOLOR")
     for k in range(X.shape[1]):
         path = [e for i,e in enumerate(graph.edges()) if X[i,k] != 0]
-        multi.add_edges_from(path, color=COLORS[k])
-        print(k,"\t",COLORS[k])
+        multi.add_edges_from(path, color=COLORS[k%len(COLORS)])
+        print(k,"\t",COLORS[k%len(COLORS)])
     # print(list(multi.edges()))
-    plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size)
+    plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size,with_arrows=with_arrows)
     
-def plot_solution_graph_from_dict(graph,X_dict,with_labels=True,font_size=5,figure_size=(20,20)):
-    multi = nx.MultiDiGraph(graph)
-    for ie, k in X_dict:
-        multi.add_edges_from([list(graph.edges())[ie]], color=COLORS[k], label = X_dict[(ie,k)])
-    # print(list(multi.edges()))
-    plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size)
+# def plot_solution_graph_from_dict(graph,X_dict,with_labels=True,font_size=5,figure_size=(20,20)):
+#     multi = nx.MultiDiGraph(graph)
+#     for ie, k in X_dict:
+#         multi.add_edges_from([list(graph.edges())[ie]], color=COLORS[k], label = X_dict[(ie,k)])
+#     # print(list(multi.edges()))
+#     plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size)
 
 
 ##################################################################3
@@ -203,3 +204,50 @@ def dfs_edges_random(graph,source,depth_limit,skip_nodes):
             node = nodes[prev]["prev"]
             prev = nodes[node]["prev"]
             depth -= 1
+################################################333
+def assemble(ks,graph,demands):
+    remaining_cap = {e: graph.edges()[e]["cap"] for e in graph.edges()}
+    nx.set_edge_attributes(graph, remaining_cap, "remaining_cap")
+    
+    alt_c = {e: graph.edges()[e]["c"] for e in graph.edges()}
+    for e in graph.edges():
+        if graph.edges()[e]["remaining_cap"] == 0:
+            alt_c[e] = None # nasičene / s kapaciteto 0 naj bodo neskončno drage
+    nx.set_edge_attributes(graph, alt_c, "alt_c")
+    
+    X_dict = {}
+    for k in ks:              
+        
+        O,D,_ = demands[k]
+        # time_before = time.perf_counter()
+        try:
+            path_of_nodes = nx.dijkstra_path(graph,O,D,"alt_c")
+        except:
+            print("deadend")
+            return None
+        # time_after = time.perf_counter()
+        # Problem.print(("dijkstra time:",time_after-time_before))
+        path = nodes_to_edges_path(path_of_nodes)
+        
+        # length = sum([graph.edges()[e]["alt_c"] for e in path])
+        # if length == np.inf:
+        #     # Problem.print("dead end: infinite edge was used")
+        #     return None
+            
+        etoei = lambda e : list(graph.edges()).index(e)
+        path_dict = {(etoei(e),k):1 for e in path}
+        X_dict = Counter(X_dict) + Counter(path_dict)
+        
+        for e in path:
+            graph.edges()[e]["remaining_cap"] -= 1
+            if graph.edges()[e]["remaining_cap"] == 0:
+                graph.edges()[e]["alt_c"] = None
+    
+    # Problem.print(" heuristic success")
+    t = len(demands)
+    m = graph.number_of_edges()
+    X = sparse.dok_matrix((m,t))
+    for a,k in X_dict:
+        X[a,k] = X_dict[(a,k)]
+    X = X.tolil()
+    return X
