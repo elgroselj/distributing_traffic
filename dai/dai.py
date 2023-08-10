@@ -61,10 +61,10 @@ class Node:
         # self.branches = branches
         self.branchingTF = branchingTF
     
-        _,m = self.vp["B"].value.shape
-        _,t = self.vp["H"].value.shape
-        # self.U = np.repeat(self.vp["cap"].value, t, axis=0)
-        self.U = np.repeat([self.vp["cap"].value], t, axis=0).T if U is None else U
+        _,m = self.vp["B"].shape
+        _,t = self.vp["H"].shape
+        # self.U = np.repeat(self.vp["cap"], t, axis=0)
+        self.U = np.repeat([self.vp["cap"]], t, axis=0).T if U is None else U
         self.L = np.zeros((m,t)) if U is None else L
         
     
@@ -81,7 +81,7 @@ class Node:
         self.label_solved = Node.label_solved
         Node.label_solved += 1
         
-        # self.vp["lam"].value = np.zeros(self.vp["lam"].value.shape) # praktično nobene dopustne rešitve ne dobim med LR iteracijami
+        # self.vp["lam"] = np.zeros(self.vp["lam"].shape) # praktično nobene dopustne rešitve ne dobim med LR iteracijami
         
         sol = {"zLD_ceil":-np.inf,
                "status":"neki",
@@ -126,10 +126,10 @@ class Node:
             
                 values.append(zLD)
                 
-                # if np.all(np.sum(X,axis=1) <= self.vp["cap"].value):#X* is feasible:
+                # if np.all(np.sum(X,axis=1) <= self.vp["cap"]):#X* is feasible:
                 if np.all(s >= 0):#X* is feasible for CLP an node:
                     print("LR found feasible")
-                    z = self.vp["c"].value.T @ np.sum(X,axis=1) # z
+                    z = self.vp["c"].T @ np.sum(X,axis=1) # z
                     zi = z
                     if z <= sol["z"]: # zapomnim si najcenejšo dopustno rešitev
                         sol["z"] = z
@@ -163,7 +163,7 @@ class Node:
                     beta = beta/2
                     flag = 0
 
-                # s = self.vp["cap"].value - np.sum(X,axis=1)
+                # s = self.vp["cap"] - np.sum(X,axis=1)
                 
                 if zi == None:
                     # print("zi is None")
@@ -184,7 +184,7 @@ class Node:
             sol["zLD_ceil"] = max(np.ceil(LB),LB_)
             if sol["X"] is not None:
                 sol["X"] = X if sol["X"] is None else sol["X"]
-                sol["s"] = s#self.vp["cap"].value - np.sum(sol["X"],axis=1)
+                sol["s"] = s#self.vp["cap"] - np.sum(sol["X"],axis=1)
                 # sol["zLD_ceil"] = max(int(np.ceil(LB)),int(LB_))
                 
                 # vzamemo tesnejšo od mej (straši vs naša)
@@ -226,7 +226,7 @@ class Node:
                         el.append((nl[i-1], nl[i]))
                     return el
                 
-                # _,t = self.vp["H"].value.shape
+                # _,t = self.vp["H"].shape
                 # _,m = self.vp["X"].value.shape
                 
                 
@@ -316,7 +316,7 @@ class Node:
                     X = self.vp["X"].value
                 
                 
-                z = int(self.vp["c"].value.T @ np.sum(X,axis=1))
+                z = int(self.vp["c"].T @ np.sum(X,axis=1))
                 
                 sol["status"] += " feasible "
                 sol["cap_ok"] = True
@@ -335,7 +335,7 @@ class Node:
     
     def get_children(self):
         X = self.sol["X"]
-        s = self.sol["s"] if self.sol["s"] is not None else self.vp["cap"].value - np.sum(X,axis=1)
+        s = self.sol["s"] if self.sol["s"] is not None else self.vp["cap"] - np.sum(X,axis=1)
         s = s[:X.shape[0]]
         # ce jih ze imamo
         if self.children is not None:
@@ -382,7 +382,7 @@ class Node:
         
         def create_branching(X,a,k):
             val = int(X[a,k])
-            cap_a = int(self.vp["cap"].value[a])
+            cap_a = int(self.vp["cap"][a])
             if cap_a <= val:
                 val = cap_a - 1
             # tj če cap = 4, in mamo na njej val = 5: delimo <=3 >=4
@@ -471,41 +471,41 @@ def init_from_graph(graph,demands):
     
     # spremenljivke
     vp["X"] = cp.Variable((m,t),integer=True)
+    vp["X_real"] = cp.Variable((m,t))
 
     # parametri
-    vp["c"] = cp.Parameter(m, integer=True)
-    vp["cap"] = cp.Parameter(m, integer = True)
-    vp["B"] = cp.Parameter((n,m), integer = True)
-    vp["H"] = cp.Parameter((n,t), integer= True)
+    # vp["c"] = cp.Parameter(m, integer=True)
+    # vp["cap"] = cp.Parameter(m, integer = True)
+    # vp["B"] = cp.Parameter((n,m), integer = True)
+    # vp["H"] = cp.Parameter((n,t), integer= True)
     vp["lam"] = cp.Parameter(m, nonneg=True)
     
-    vp["eta"] = cp.Parameter((m,t), nonneg = True)
-    vp["xi"] = cp.Parameter((m,t), nonneg = True)
+    vp["gama"] = cp.Parameter(nonneg=True)
+    vp["zeta"] = cp.Parameter(nonneg=True)
+    
+    
+    # vp["eta"] = cp.Parameter((m,t), nonneg = True)
+    # vp["xi"] = cp.Parameter((m,t), nonneg = True)
 
     # dolocim vrednosti parametrom
-    vp["c"].value = np.round(np.array([data["c"] for _,_, data in graph.edges(data=True)])) # BŠS
-    vp["cap"].value = np.floor(np.array([data["cap"] for _,_, data in graph.edges(data=True)])) # caps floor to int
-    print(vp["c"].value)
-    print(vp["cap"].value)
-    vp["B"].value = -1 * np.array(nx.incidence_matrix(graph,oriented=True).todense())
+    vp["c"] = np.round(np.array([data["c"] for _,_, data in graph.edges(data=True)])) # BŠS
+    vp["cap"] = np.floor(np.array([data["cap"] for _,_, data in graph.edges(data=True)])) # caps floor to int
+    print(vp["c"])
+    print(vp["cap"])
+    vp["B"] = -1 * np.array(nx.incidence_matrix(graph,oriented=True).todense())
     def demands_to_matrix(demands,n):
         H = np.zeros((n,len(demands)))
         for k,(Ok,Dk,d) in enumerate(demands):
             H[Ok,k] = d
             H[Dk,k] = -d
         return H      
-    # vp["H"].value = np.array([[1, 3, 2],
-    #                     [0, 0, 0],
-    #                     [0, 0, 0],
-    #                     [-1, 0, 0],
-    #                     [0, -3, 0],
-    #                     [0, 0, -2]
-    #                     ])
-    vp["H"].value = demands_to_matrix(demands,n)
-    print(vp["H"].value)
+    vp["H"] = demands_to_matrix(demands,n)
+    print(vp["H"])
     vp["lam"].value = np.zeros(m)
-    vp["eta"].value = np.zeros((m,t))
-    vp["xi"].value = np.zeros((m,t))
+    vp["gama"].value = 0.5
+    vp["zeta"].value = 0.5
+    # vp["eta"].value = np.zeros((m,t))
+    # vp["xi"].value = np.zeros((m,t))
 
 
 
@@ -525,7 +525,21 @@ def init_from_graph(graph,demands):
 
     # prob = cp.Problem(obj, constraints)
     # # print(prob.is_dpp()) TODO
-    return (obj, constraints, obj_ex, constraints_ex_additional, vp, obj_opt)
+    
+    obj_biobj = cp.Minimize(vp["gama"] * (vp["c"].T @ cp.sum(vp["X"],axis=1)) +
+                            vp["zeta"] * cp.sum(cp.maximum(0, (cp.sum(vp["X"],axis=1) - vp["cap"]) ) ) )
+    
+    # obj_biobj = cp.Minimize((vp["gam"]) * cp.sum(cp.maximum(0, (cp.sum(vp["X"],axis=1) - vp["cap"]) ) ))
+    
+    obj_LP = cp.Minimize(vp["c"].T @ cp.sum(vp["X_real"],axis=1))
+    constraints_LP = [
+        cp.sum(vp["X_real"],axis=1) <= vp["cap"],
+        vp["B"] @ vp["X_real"] == vp["H"],
+        vp["X_real"] >= 0
+    ]
+    
+    
+    return (obj, constraints, obj_ex, constraints_ex_additional, vp, obj_opt, obj_biobj, obj_LP, constraints_LP)
 
 
 def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MAX_ITER,MAX_ITER_LR):
@@ -537,7 +551,7 @@ def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MA
 
     n_best = None
     # celostevilska rešitev
-    UB = np.sum(vp["c"].value) * vp["H"].value.shape[1] * np.max(vp["H"].value) # to je vsi komoditiji grejo po vseh povezavah
+    UB = np.sum(vp["c"]) * vp["H"].shape[1] * np.max(vp["H"]) # to je vsi komoditiji grejo po vseh povezavah
     q = 0
     while len(todo) > 0:
         if q >= MAX_ITER: break
@@ -626,7 +640,7 @@ def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MA
 
 
 def dai_solve(graph,demands,MAX_ITER,MAX_ITER_LR):
-    obj, constraints, obj_ex, constraints_ex_additional, vp, _  = init_from_graph(graph,demands)
+    obj, constraints, obj_ex, constraints_ex_additional, vp, _,_  = init_from_graph(graph,demands)
 
     n_best, end_LB = run(obj,constraints,obj_ex, constraints_ex_additional, vp,graph,demands,MAX_ITER=MAX_ITER,MAX_ITER_LR=MAX_ITER_LR)
     

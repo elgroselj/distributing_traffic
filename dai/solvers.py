@@ -94,7 +94,7 @@ class Descent:
             mat = self.Q[over_cap_edges,:] > 0
             self.over_cap = {e : list(sparse.find(mat[ei,:]>0)[1]) for ei, e in enumerate(over_cap_edges)}
             
-            self.cost = (c @ edge_flow.T)[0,0]
+            self.cost = int((c @ edge_flow.T)[0,0])
             
             self.over_cap_count = Descent.Node.calc_over_cap_count(self.Q,cap)
             
@@ -324,108 +324,64 @@ class Descent:
             print(tree)
             
         message = ""
+        over_cap_count = None
         if len(feasible) == 0:
             best_evaluated = min(evaluated, key= lambda node: (node.over_cap_count,node.cost))
             best_evaluated_improved = Descent.lower_the_cost(best_evaluated,feasible,allowed_over_cap_count=best_evaluated.over_cap_count)
-            status = "no_feasible_found"
+            status = "no_feas"
             X = best_evaluated_improved.X
             cost = best_evaluated_improved.cost
-            message = "over_cap_count: {}".format(best_evaluated_improved.over_cap_count)
+            # message = "over_cap_count: {}".format(best_evaluated_improved.over_cap_count)
+            over_cap_count = best_evaluated_improved.over_cap_count
         else:
             best_feasible_node = min(feasible, key= lambda node: node.cost)
             if best_feasible_node.cost == LB:
                 status = "optimal"
             else:
                 status = "suboptimal"
-                message = "at most {} percent of optimum ({})".format(best_feasible_node.cost/LB * 100,LB)
+                # message = "at most {} percent of optimum ({})".format(best_feasible_node.cost/LB * 100,LB)
             X = best_feasible_node.X
             cost = best_feasible_node.cost
+            over_cap_count = 0
         
-        res = Problem.Result(status, X, cost, message)
+        res = Problem.Result(status, X, cost, message, LB, over_cap_count)
         p.results[str(__class__)] = res
         return res
     
-class Optimal_cvxpy:
-    def solve(p,timeout,SOLVER="GLPK_MI"):
-        # if p.graph.number_of_nodes() > 30:
-        #     return
-        
-        if not Problem.verbose:
-            save_stdout = sys.stdout
-            sys.stdout = open('trash', 'w')
-        ###############################
-        _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
-        
-        
-        #################################
-        if not Problem.verbose:
-            sys.stdout = save_stdout
-            
-        
-        # _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
-        problem = cp.Problem(obj_opt, constraints + constraints_ex_additional)
-        #####################################33
-        problem.solve(verbose=True,solver=SOLVER)
-        ###############################333
-        # def f(SOLVER):
-        #     problem.solve(verbose=True,solver=SOLVER)
-            
-        # pr = multiprocessing.Process(target=f, name="F", args=(SOLVER,))
-        # pr.start()
 
-        # # Wait 10 seconds for foo
-        # for i in range(int(timeout)):
-        #     time.sleep(1)
-        #     print("iter")
-        #     if not pr.is_alive():
-        #         print("nono")
-        #         break
-                
-        # print("juhu")
-        # # Terminate foo
-        # pr.terminate()
 
-        # # Cleanup
-        # pr.join()
-        ###########################################333
-        status, X, cost = (problem.status, vp["X"].value, problem.value)
-            
-        res = Problem.Result(status, X, cost)
-        p.results[str(__class__)] = res
-        return res
-
-class Dai_solver:
+# class Dai_solver:
     
-    def solve(p,MAX_ITER,MAX_ITER_LR):
-        if not Problem.verbose:
-            save_stdout = sys.stdout
-            sys.stdout = open('trash', 'w')
-        ###############################
-        status, X, cost, message = dai.dai_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
-        res = Problem.Result(status, X, cost, message)
-        p.results[str(__class__)] = res
+#     def solve(p,MAX_ITER,MAX_ITER_LR):
+#         if not Problem.verbose:
+#             save_stdout = sys.stdout
+#             sys.stdout = open('trash', 'w')
+#         ###############################
+#         status, X, cost, message = dai.dai_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
+#         res = Problem.Result(status, X, cost, message)
+#         p.results[str(__class__)] = res
         
-        #################################
-        if not Problem.verbose:
-            sys.stdout = save_stdout
+#         #################################
+#         if not Problem.verbose:
+#             sys.stdout = save_stdout
         
-        return res
+#         return res
     
-class Dai2_solver:
-    def solve(p,MAX_ITER,MAX_ITER_LR):
-        if not Problem.verbose:
-            save_stdout = sys.stdout
-            sys.stdout = open('trash', 'w')
-        ###############################
-        status, X, cost, message = dai2.dai2_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
-        res = Problem.Result(status, X, cost, message)
-        p.results[str(__class__)] = res
+# class Dai2_solver:
+#     def solve(p,MAX_ITER,MAX_ITER_LR):
+#         if not Problem.verbose:
+#             save_stdout = sys.stdout
+#             sys.stdout = open('trash', 'w')
+#         ###############################
+#         status, X, cost, message = dai2.dai2_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
+#         res = Problem.Result(status, X, cost, message)
+#         p.results[str(__class__)] = res
         
-        #################################
-        if not Problem.verbose:
-            sys.stdout = save_stdout
+#         #################################
+#         if not Problem.verbose:
+#             sys.stdout = save_stdout
         
-        return res
+#         return res
     
 class Dai3_solver:
     def solve(p,MAX_ITER,MAX_ITER_LR):
@@ -433,8 +389,9 @@ class Dai3_solver:
             save_stdout = sys.stdout
             sys.stdout = open('trash', 'w')
         ###############################
-        status, X, cost, message = dai3.dai3_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
-        res = Problem.Result(status, X, cost, message)
+        status, X, cost, message, LB, over_cap_count = dai3.dai3_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
+        LB = LB if isinstance(LB, float) else int(LB[0,0])
+        res = Problem.Result(status, X, cost, message,LB,over_cap_count)
         p.results[str(__class__)] = res
         
         #################################
@@ -503,17 +460,20 @@ class Keep_feasible:
                         
         yield from generate_helper(0, [''] * length)
     
-    def finish(p,feasible,message=""):
+    def finish(p,feasible,LB,message=""):
         if len(feasible) == 0:
-            status = "no_feasible_solution_found"
+            status = "no_feas"
             X = None
             cost = None
+            over_cap_count = None
         else:
-            status = "optimal" if message == "optimal" else "found_something"
+            status = "optimal" if message == "optimal" else "feasible"
             cost, X = min(feasible, key= lambda x: x[0])
+            cost = int(cost)
         
+            over_cap_count = 0
     
-        res = Problem.Result(status, X, cost,message)
+        res = Problem.Result(status, X, cost,message,LB,over_cap_count)
         p.results[str(__class__)] = res
         return res
     
@@ -555,25 +515,28 @@ class Keep_feasible:
             feasible.append((cost,X))
             if known_LB is not None and cost <= known_LB:
                 Problem.print("optimal")
-                return Keep_feasible_shuffle.finish(p,feasible,message="optimal")
+                return Keep_feasible_shuffle.finish(p,feasible,known_LB,message="optimal")
             # Problem.print("*")
         Problem.print(feasible)
-        return Keep_feasible.finish(p,feasible,message="all_searched")
+        return Keep_feasible.finish(p,feasible,known_LB,message="all_permutations")
     
 
 class Keep_feasible_shuffle:
     
-    def finish(p,feasible,message=""):
+    def finish(p,feasible,LB,message=""):
         if len(feasible) == 0:
-            status = "no_feasible_solution_found"
+            status = message
             X = None
             cost = None
+            over_cap_count = None
         else:
-            status = "optimal" if message == "optimal" else "found_something"
+            status = "optimal" if message == "optimal" else "feasible"
             cost, X = min(feasible, key= lambda x: x[0])
+            cost = int(cost)
         
+            over_cap_count = 0
     
-        res = Problem.Result(status, X, cost,message)
+        res = Problem.Result(status, X, cost,"",LB,over_cap_count)
         p.results[str(__class__)] = res
         return res
     
@@ -603,7 +566,7 @@ class Keep_feasible_shuffle:
                 cons_repetitions += 1
                 if cons_repetitions >= max_cons_repetitions:
                     Problem.print("repetitions")
-                    return Keep_feasible_shuffle.finish(p,feasible,message="timeouted")
+                    return Keep_feasible_shuffle.finish(p,feasible,known_LB,message="repetitions")
                 Problem.print("seen")
                 continue
             else:
@@ -614,7 +577,7 @@ class Keep_feasible_shuffle:
             Problem.print(after_t - before_t)
             if timeout is not None and after_t - before_t > timeout:
                 Problem.print("timeouted")
-                return Keep_feasible_shuffle.finish(p,feasible,message="timeouted")
+                return Keep_feasible_shuffle.finish(p,feasible,known_LB,message="timeouted")
             
             Problem.print(ks)
             
@@ -627,12 +590,253 @@ class Keep_feasible_shuffle:
             
             if known_LB is not None and cost <= known_LB:
                 Problem.print("optimal")
-                return Keep_feasible_shuffle.finish(p,feasible,message="optimal")
+                return Keep_feasible_shuffle.finish(p,feasible,known_LB,message="optimal")
+            
+class Optimal_cvxpy:
+    def solve(p,timeout,SOLVER="GLPK_MI"):
+        # if p.graph.number_of_nodes() > 30:
+        #     return
+        
+        if not Problem.verbose:
+            save_stdout = sys.stdout
+            sys.stdout = open('trash', 'w')
+        ###############################
+        _, constraints, _, constraints_ex_additional, vp, obj_opt, _,_,_  = dai.init_from_graph(p.graph,p.demands)
+        
+        
+        #################################
+        if not Problem.verbose:
+            sys.stdout = save_stdout
+            
+        
+        # _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
+        problem = cp.Problem(obj_opt, constraints + constraints_ex_additional)
+        #####################################33
+        if SOLVER == "CBC":
+            problem.solve(verbose=True,solver=SOLVER, maximumSeconds=timeout)
+        else:
+            problem.solve(verbose=True,solver=SOLVER)
+        ###############################333
+        # def f(SOLVER):
+        #     problem.solve(verbose=True,solver=SOLVER)
+            
+        # pr = multiprocessing.Process(target=f, name="F", args=(SOLVER,))
+        # pr.start()
+
+        # # Wait 10 seconds for foo
+        # for i in range(int(timeout)):
+        #     time.sleep(1)
+        #     print("iter")
+        #     if not pr.is_alive():
+        #         print("nono")
+        #         break
+                
+        # print("juhu")
+        # # Terminate foo
+        # pr.terminate()
+
+        # # Cleanup
+        # pr.join()
+        ###########################################333
+        status, X, cost = (problem.status, vp["X"].value, problem.value)
+        try:
+            cost = int(cost)
+        except:
+            pass
+        res = Problem.Result(status, X, cost)
+        p.results[str(__class__)] = res
+        return res
+
+class LP_relaxation:
+    def solve(p,SOLVER="CBC"):
+        
+        if not Problem.verbose:
+            save_stdout = sys.stdout
+            sys.stdout = open('trash', 'w')
+        ###############################
+        _, _, _, _, vp, _, _, obj_LP, constraints_LP  = dai.init_from_graph(p.graph,p.demands)
+        
+        
+        #################################
+        if not Problem.verbose:
+            sys.stdout = save_stdout
+            
+        
+        # _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
+        problem = cp.Problem(obj_LP, constraints_LP)
+        #####################################33
+        problem.solve(verbose=True,solver=SOLVER)       
+        ###########################################333
+        status_LP, X_real, val = (problem.status, vp["X_real"].value, problem.value)
+        message = ""
+        if status_LP == "infeasible":
+            status = "infeasible"
+            X = None
+            cost = None
+            LB = None
+            over_cap_count = None
+        else:
+            X = np.round(X_real)
+            LB = int(np.round(val))
+            # message = "{} is LB".format(LB)
+            s = vp["cap"] - X.sum(axis=1)
+            cost = int(vp["c"].T @ X.sum(axis=1))
+            if np.all(vp["B"] @ X == vp["H"]):
+                if np.all(s >= 0):
+                    if cost == LB:
+                        status = "optimal"
+                    else:
+                        status = "feasible"
+                    over_cap_count = 0
+                
+                else:
+                    status = "over_cap"
+                    over_cap_count = -np.sum(s[s<0])
+                    # message += "over_cap: {}".format()
+            else:
+                status = "no_solution_found"
+                cost = None
+                over_cap_count = None
+                
                 
             
-                    
-            
+        res = Problem.Result(status, X, cost, message, LB, over_cap_count)
+        p.results[str(__class__)] = res
+        return res
     
-
-
+class Biobjective:
+    def solve(p, importance_factor = 0.5, SOLVER = "CBC",known_LB=None):
+        if not Problem.verbose:
+            save_stdout = sys.stdout
+            sys.stdout = open('trash', 'w')
+        ###############################
+        _, constraints, _, _, vp, _, obj_biobj,_,_  = dai.init_from_graph(p.graph,p.demands)
+        
+        
+        #################################
+        if not Problem.verbose:
+            sys.stdout = save_stdout
             
+        problem = cp.Problem(obj_biobj, constraints)
+        
+        vp["gama"].value = importance_factor
+        vp["zeta"].value = 1 - importance_factor
+        problem.solve(verbose=True,solver=SOLVER)
+        
+        
+        X = vp["X"].value
+        cost = None
+        message = ""
+        over_cap_count = None
+        
+        if problem.status == "infeasible":
+            status = problem.status
+        else:
+        
+            cost = int(vp["c"].T @ X.sum(axis=1))
+            
+            over_flow = (X.sum(axis=1) - vp["cap"])
+            over_cap_count = np.sum(np.max( [np.zeros(len(over_flow)), over_flow], axis=0))
+            # over_cap_count = 100
+            # message = "over_cap_count: {}".format(over_cap_count)
+        
+        
+            if problem.status == "optimal" and over_cap_count == 0:
+                if known_LB is not None and cost == known_LB:
+                    status = "optimal"
+                else:
+                    status = "feasible"
+            else:
+                status = "over_cap"
+            
+        res = Problem.Result(status, X, cost, message,known_LB,over_cap_count)
+        p.results[str(__class__)] = res
+        return res
+class DnC:
+    def divide_demands(p,dim="x"):
+        val = sum([ (p.graph.nodes()[O][dim] + p.graph.nodes()[D][dim])/2 for O,D,_ in p.demands]) / len(p.demands)
+        demandsL = []
+        demandsR = []
+        demands_remaining = []
+        for O,D,num_k in p.demands:
+            Ox = p.graph.nodes()[O][dim]
+            Dx = p.graph.nodes()[D][dim]
+            if Ox < val and Dx < val:
+                demandsL.append((O,D,num_k))
+            elif Ox > val and Dx > val:
+                demandsR.append((O,D,num_k))
+            else:
+                demands_remaining.append((O,D,num_k))
+        return demandsL,demandsR,demands_remaining
+                
+            
+        
+        
+    def solve(p,known_LB = None):
+        try:
+            demandsL,demandsR,demands_remaining = DnC.divide_demands(p,dim="x")
+        except:
+            i1 = int(len(p.demands)/4)
+            i2 = i1*2
+            demandsL= p.demands[:i1]
+            demandsR= p.demands[i1:i2]
+            demands_remaining = p.demands[i2:]
+        if len(demandsL) == 0:
+            X1 = None
+        else:
+            Problem.print((demandsL,demandsR,demands_remaining))
+            subproblem1 = Problem(p.graph,demandsL)
+            res = Biobjective.solve(subproblem1,importance_factor=10e-8)
+            X1 = res.X
+        if len(demandsR) == 0:
+            X2 = None
+        else:
+            subproblem2 = Problem(p.graph,demandsR)
+            res = Biobjective.solve(subproblem2,importance_factor=10e-8)
+            X2 = res.X
+            
+        graph_ = nx.DiGraph(p.graph)
+        if X1 is None and X2 is None:
+            pass
+        else:
+            if X1 is None:
+                X_sum = X2
+            elif X2 is None:
+                X_sum = X1
+            else:
+                X_sum = sparse.hstack([sparse.csr_matrix(X1),sparse.csr_matrix(X2)])
+            new_cap = np.array(np.array(p.cap) - X_sum.sum(axis=1).T).flatten()
+            print("new_cap.shape: ",new_cap.shape, new_cap[0])
+            new_cap[new_cap < 0] = 0
+            nx.set_edge_attributes(graph_, {e: float(new_cap[ei]) for ei,e in enumerate(graph_.edges())},"cap")
+            
+        final_problem = Problem(graph_,demands_remaining)
+        res = Biobjective.solve(final_problem,importance_factor=10e-8)
+        X3 = res.X
+        
+        l = []
+        if X1 is not None: l.append(sparse.csr_matrix(X1))
+        if X2 is not None: l.append(sparse.csr_matrix(X2))
+        if X3 is not None: l.append(sparse.csr_matrix(X3))
+        X = sparse.hstack(l)
+        
+        cost = np.array(p.c).T @ X.sum(axis=1)
+        cost = cost if isinstance(cost, int) else int(cost[0,0])
+        
+        over_flow = np.array(X.sum(axis=1).T - np.array(p.cap)).flatten()
+        over_cap_count = np.sum(np.max( [np.zeros(len(over_flow)), over_flow], axis=0))
+        # message = "over_cap_count: {}".format(over_cap_count)
+        message = ""
+        
+        if over_cap_count == 0:
+            if known_LB is not None and known_LB == cost:
+                status = "optimal"
+            else:
+                status = "feasible"
+        else:
+            status = "over_cap"
+            
+        res = Problem.Result(status, X, cost, message, known_LB, over_cap_count)
+        p.results[str(__class__)] = res
+        return res
+                  

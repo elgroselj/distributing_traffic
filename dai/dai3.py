@@ -100,8 +100,8 @@ class Node:
         # iterations
         while q <= q_max and beta > eps:
             ###############################
-            # X, status, zLD, s = ss.dijkstra0(self.vp, graph, demands, alpha)
-            X, status, zLD, s = ss.astar(self.vp, graph, demands, alpha)
+            X, status, zLD, s = ss.dijkstra0(self.vp, graph, demands, alpha)
+            # X, status, zLD, s = ss.astar(self.vp, graph, demands, alpha)
             lams.append(np.copy(self.vp["lam"]))
             ###############################################
             if status == "infeasible":
@@ -177,10 +177,12 @@ class Node:
                 sol["z"] = z
             
             # sol["status"] += " feasible "
-            sol["status"] = "feasible"
-            
-            sol["cap_ok"] = True
-            sol["X"] = X
+                sol["status"] = "feasible"
+                
+                sol["cap_ok"] = True
+                sol["X"] = X
+            else:
+                sol["status"] = "no_feasible_solution_found"
             
             
         self.sol = sol
@@ -306,6 +308,10 @@ def run(vp,graph,demands,MAX_ITER,MAX_ITER_LR):
     zLD_ceil = n.sol["zLD_ceil"]
     z = n.sol["z"]
     
+    X = n.sol["X"]
+    # s = vp["cap"] - X.sum(axis=1).T
+    # if not np.all(s >= 0):
+    #     print("false_feasible")
     
     
     if n.sol["cap_ok"]: # dopustna za prvotni CLP
@@ -345,13 +351,16 @@ def dai3_solve(graph,demands,MAX_ITER,MAX_ITER_LR):
 
     n_best, end_LB = run(vp,graph,demands,MAX_ITER=MAX_ITER,MAX_ITER_LR=MAX_ITER_LR)
     
-    message = "{} is LB".format(end_LB)
+    message = ""
+    LB = end_LB
     if n_best is None:
-        status = "no_feasible_solutions_found"
+        status = "no_feas"
         X = None
         z = None
+        over_cap_count = None
     else: 
         status, X, z = (n_best.sol["status"], n_best.sol["X"], n_best.sol["z"])
+        over_cap_count = 0 if z < np.inf else None
         
         
-    return (status,X,z,message)
+    return (status,X,z,message,LB,over_cap_count)

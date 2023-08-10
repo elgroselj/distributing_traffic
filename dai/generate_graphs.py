@@ -82,7 +82,7 @@ def smooth_out_simple_nodes(graph_, demands, min_c):
 
 
 # ta density loh spreminjam če bojo vsi enako gosti
-def generate_random_graph(n_max, t, k_num_max, cap_max, density_param=0.5, c_max=100):
+def generate_random_graph(n_max, t, k_num_max, cap_max, density_param=1, c_max=10):
 
     # generiraš podatke
 
@@ -100,7 +100,7 @@ def generate_random_graph(n_max, t, k_num_max, cap_max, density_param=0.5, c_max
             # (k_num_max/2) je pričakovana vrednost
             len_ub = min(n_max-1, density_param *
                          (n_max-1)*n_max/t/(k_num_max/2))
-            len = random.randint(1, len_ub)
+            len = random.randint(1, int(len_ub))
             nodes = random.sample(
                 [node for node in range(n_max) if node not in [O, D]], len-1)
             edges_ = hf.nodes_to_edges_path([O]+nodes+[D])
@@ -139,6 +139,11 @@ def generate_random_graph(n_max, t, k_num_max, cap_max, density_param=0.5, c_max
 # hf.plot_multigraph(graph, with_labels=True,font_size=10,figure_size=(20,20))
 
 
+def generate_random_graphs(n_max, t, k_num_max, cap_max, density_param=1, c_max=10):
+    yield generate_random_graph(n_max, t, k_num_max, cap_max, density_param, c_max)
+    
+
+
 def place_to_nx(place, save=False, mode="place", point=None):
     try:
         file = open('/home/lema/Documents/diplomska/dai/' +
@@ -156,15 +161,28 @@ def place_to_nx(place, save=False, mode="place", point=None):
         # (46.05407,14.52114)
         graph_ox = ox.graph_from_point(point, dist=10000, network_type="drive")
 
-    graph = nx.convert_node_labels_to_integers(nx.DiGraph(graph_ox))
+    graph = nx.convert_node_labels_to_integers(nx.DiGraph(graph_ox,graph_title=place))
 
-    hf.fill_maxspeed(graph)
+    filled_neto, filled_bruto = hf.fill_maxspeed(graph)
+    graph.graph["original_maxspeed1"] = 1-filled_bruto/graph.number_of_edges()
+    graph.graph["original_maxspeed2"] = 1-filled_neto/graph.number_of_edges()
 
     graph.edges(data=True)
-    times = {e: np.round(
-        graph.edges()[e]["length"]/graph.edges()[e]["maxspeed"]) for e in graph.edges()}
-    capacities = {e: np.floor(
-        1 + graph.edges()[e]["length"]*graph.edges()[e]["maxspeed"]/1000) for e in graph.edges()}
+    # times = {e: np.round(
+    #     graph.edges()[e]["length"]/10,graph.edges()[e]["maxspeed"])/1000*60*60 for e in graph.edges()}
+    times =  {e: int(round(graph.edges()[e]["length"]*1000/graph.edges()[e]["maxspeed"]/60)) for e in graph.edges()}
+    
+    def type_weight(x):
+        type_coef = {"motorway":1,"trunk":0.9,"primary":0.7,"secondary":0.5,"tertiary":0.3,"unclassified":0.2,"residential":0.1}
+        key = x if isinstance(x,str) else x[0]
+        key = key.split("_")[0]
+        if key in type_coef:
+            return type_coef[key]
+        else:
+            return 0.5
+        
+    capacities = {e: int(np.floor(1 + type_weight(graph.edges()[e]["highway"])*graph.edges()[e]["maxspeed"])) for e in graph.edges()}
+    # capacities = {e: np.floor(graph.edges()[e]["maxspeed"]) for e in graph.edges()}
     nx.set_edge_attributes(graph, times, "c")
     nx.set_edge_attributes(graph, capacities, "cap")
 
@@ -211,14 +229,29 @@ def random_demands(graph,num_cars):
     return demands
 
 def about_graph(graph):
-    print("graph",end=": ")
+    print("graph: ",end="")
+    if "graph_title" in graph.graph: print(graph.graph["graph_title"], end=" ")
     print("num_nodes: ", graph.number_of_nodes(),end=", ")
     print("density: ", nx.density(graph))
+    # print("original_maxspeed: {}({})", graph.graph["original_maxspeed1"],graph.graph["original_maxspeed1"])
     pass
-    
+
+def graph_latex_cell(graph):
+    graph_title = ("","") if "graph_title" not in graph.graph else ("graf",graph.graph["graph_title"][:3])
+    return hf.latex_cell_pairs([graph_title,("n", graph.number_of_nodes()),(r"$\rho$",round(nx.density(graph),3))])
     
 def about_demands(demands):
     print("demands: ",demands,end=": ")
     print("num_cars: ", sum([k_num for _,_,k_num in demands]),end=", ")
     print("avg_group_size: ", sum([k_num for _,_,k_num in demands])/len(demands))
     print("biggest_group_size: ", max([k_num for _,_,k_num in demands]))
+
+def demands_latex_cell(demands):
+    num_k_s = [num_k for _,_,num_k in demands]
+    l = []
+    for num_k in set(num_k_s):
+        num = num_k_s.count(num_k)
+        oblika="{}x{} ".format(num,num_k)
+        l.append(oblika)
+    return hf.latex_cell(l)
+    

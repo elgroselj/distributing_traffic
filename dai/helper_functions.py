@@ -22,8 +22,8 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with
         try:
             pos = nx.planar_layout(G)
         except:
-            # pos = nx.circular_layout(G)
-            pos = nx.spring_layout(G)
+            pos = nx.circular_layout(G)
+            # pos = nx.spring_layout(G)
             
     nx.draw_networkx_nodes(G, pos, node_size=0, alpha=1)
     nx.draw_networkx_labels(G, pos, font_size=font_size)
@@ -36,8 +36,8 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with
                     arrowprops=dict(arrowstyle="->" if with_arrows == True else "-", color=edge_color,
                                     shrinkA=5, shrinkB=5,
                                     patchA=None, patchB=None,
-                                    connectionstyle="arc3,rad=rrr".replace('rrr', str(0.1 * (e[2] + 1))
-                                                                           ),
+                                    connectionstyle="arc3,rad=rrr".replace('rrr', str(0.1 * (e[2] + 1))),
+                                    linewidth= 7 if "over_cap" in G.edges[e] and G.edges[e]["over_cap"] else 1
                                     ),
                     )
     if with_labels:
@@ -51,9 +51,12 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with
     plt.axis('off')
     plt.show()
 
-def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20),with_arrows=True):
+def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20),with_arrows=True,over_cap_edges=[]):
+    nx.set_edge_attributes(graph,{e:(e in over_cap_edges) for e in list(graph.edges())},"over_cap")
     multi = nx.MultiDiGraph(graph)
     print("k\tCOLOR")
+
+    
     for k in range(X.shape[1]):
         path = [e for i,e in enumerate(graph.edges()) if X[i,k] != 0]
         multi.add_edges_from(path, color=COLORS[k%len(COLORS)])
@@ -72,6 +75,8 @@ def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20)
 ##################################################################3
 
 def fill_maxspeed(g):
+    filled_neto = 0
+    filled_bruto = 0
     for ke in g.edges():
         e = g.edges()[ke]
         if "maxspeed" in e.keys():
@@ -89,15 +94,33 @@ def fill_maxspeed(g):
                     neki = g.edges()[ke2]["maxspeed"]
                     if not isinstance(neki,int):
                         neki = int(neki) if isinstance(neki, str) else int(list(neki)[0])
-                    if neki != 999:
+                    if neki % 10 != 1:
                         e["maxspeed"] = neki
+                        filled_bruto +=1
                         success = True
                         break
             if not success:
-                e["maxspeed"] = 999
+                
+                def type_maxspeed(x):
+                    type_speed = {"motorway":130,"trunk":110,"primary":90,"secondary":70,"tertiary":50,"unclassified":40,"residential":30}
+                    key = x if isinstance(x,str) else x[0]
+                    key = key.split("_")[0]
+                    if key in type_speed:
+                        return type_speed[key]+1
+                    else:
+                        return 50
+
+                e["maxspeed"] = type_maxspeed(e["highway"])
+                filled_bruto += 1
+                filled_neto += 1
+            
+            
 
             print(e["highway"], end="")
             print(" is set to " + str(e["maxspeed"]))
+            
+    nx.set_edge_attributes(g,{e:max(10,round(g.edges()[e]["maxspeed"],-1)) for e in g.edges()},"maxspeed")
+    return filled_neto, filled_bruto
             
 
 #######################################################################################3
@@ -243,6 +266,10 @@ def assemble(ks,graph,demands):
             if graph.edges()[e]["remaining_cap"] == 0:
                 graph.edges()[e]["alt_c"] = None
     
+   
+    
+    
+    
     # Problem.print(" heuristic success")
     t = len(demands)
     m = graph.number_of_edges()
@@ -250,4 +277,41 @@ def assemble(ks,graph,demands):
     for a,k in X_dict:
         X[a,k] = X_dict[(a,k)]
     X = X.tolil()
+    
+    
+    cap = np.array([graph.edges()[e]["cap"] for e in list(graph.edges())])
+    s = cap - X.sum(axis=1).T
+    if not np.all(s >= 0):
+        print("false_feasible")
+        return None
     return X
+
+################################################
+
+def latex_cell_pairs(pairs,with_field_names=True):
+    repr_ = lambda x: "None" if x is None else repr(x)
+    stri = r"\begin{tabular}{ll}"
+    for i, (key, val) in enumerate(pairs):
+        if i != 0: stri += r"\\"
+        name = key if with_field_names else ""
+        colon = ":" if len(name) >0 else ""
+        
+        stri += "{}{}         &  {}".format(name,colon,val if isinstance(val,str) else repr_(val))
+            
+            
+    stri += "\end{tabular}"
+    return stri
+
+def latex_cell(datas):
+    repr_ = lambda x: "None" if x is None else repr(x)
+    stri = r"\begin{tabular}{l}"
+    for i, data in enumerate(datas):
+        if i != 0: stri += r"\\"
+        
+        stri += "{}".format(data if isinstance(data,str) else repr_(data))
+            
+            
+    stri += "\end{tabular}"
+    return stri
+
+# def latex_row(graph,demands,):
