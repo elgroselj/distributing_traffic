@@ -1,3 +1,4 @@
+import time
 import cvxpy as cp
 from matplotlib import pyplot as plt
 import numpy as np
@@ -58,7 +59,7 @@ class Node:
         
         
     
-    def solve(self,LB_,UB_,graph,demands):
+    def solve(self,LB_,UB_,graph,demands,timeout):
         # solve 
             # najde približek za zLD (najboljšo mejo, ki jo lahko da LA)
                 # če ga ne najdemo s primarno hevristko
@@ -98,7 +99,13 @@ class Node:
         q_max = Node.MAX_ITER_LR # max number of iteration is q_max.
         
         # iterations
-        while q <= q_max and beta > eps:
+        time_diff = 0
+        before_t = time.perf_counter()
+        LR_found_feasible = 0
+        while q <= q_max and beta > eps and time_diff < timeout:
+            time_diff = time.perf_counter() - before_t
+            
+            # print(time_diff)
             ###############################
             X, status, zLD, s = ss.dijkstra0(self.vp, graph, demands, alpha)
             # X, status, zLD, s = ss.astar(self.vp, graph, demands, alpha)
@@ -115,6 +122,7 @@ class Node:
             
             # if np.all(np.sum(X,axis=1) <= self.vp["cap"]):#X* is feasible:
             if np.all(s >= 0):#X* is feasible for CLP an node:
+                LR_found_feasible += 1
                 print("LR found feasible")
                 z = float(self.vp["c"].T @ X.sum(axis=1))
                 zi = z
@@ -139,7 +147,8 @@ class Node:
                     
             if flag > 2:
                 print("beta halfed in ", q)
-                beta = beta/2
+                if zi is not None:
+                    beta = beta/2
                 flag = 0
 
             
@@ -154,6 +163,7 @@ class Node:
             q = q + 1
                 
         print(q,beta)
+        print("LR_found_feasible",LR_found_feasible)
         
         sol["zLD_ceil"] = max(np.ceil(LB),LB_)
         if sol["X"] is None:
@@ -255,7 +265,7 @@ def init_from_graph(graph,demands):
     return vp
 
 
-def run(vp,graph,demands,MAX_ITER,MAX_ITER_LR):
+def run(vp,graph,demands,MAX_ITER,MAX_ITER_LR,timeout):
     Node.label = 0
     Node.label_solved = 0
     Node.MAX_ITER_LR = MAX_ITER_LR
@@ -277,31 +287,39 @@ def run(vp,graph,demands,MAX_ITER,MAX_ITER_LR):
     
     
     
+    UB = np.sum(vp["c"]) * vp["H"].tocsr().max(axis=0).sum() # to je vsi komoditiji grejo po vseh povezavah
+    returned = n.solve(LB,UB,graph,demands,timeout)
     
-    returned = n.solve(LB,UB,graph,demands)
-    
-    try:
-        values, lams, alphas = returned
-    except:
-        pass
-    
-    try:
-        plt.plot(values)
-        plt.show()
-    except:
-        pass
-    
-    try:
-        plt.plot([lam[0] for lam in lams])
-        plt.show()
-    except:
-        pass
-    
-    try:
-        plt.plot(alphas)
-        plt.show()
-    except:
-        pass
+    if False:
+        try:
+            values, lams, alphas = returned
+        except:
+            pass
+        
+        try:
+            plt.plot(values)
+            plt.show()
+        except:
+            pass
+        
+        # try:
+        #     plt.plot([lam[0] for lam in lams])
+        #     plt.show()
+        # except:
+        #     pass
+        
+        # try:
+        #     plt.plot(alphas)
+        #     plt.show()
+        # except:
+        #     pass
+        
+        # try:
+        #     for i in range(len(lams[0][0,:])):
+        #         plt.scatter([lam[:,i] for lam in lams],values,c=["k"]*len(values))
+        #         plt.show()
+        # except:
+        #     pass
     
     
     
@@ -346,10 +364,10 @@ def run(vp,graph,demands,MAX_ITER,MAX_ITER_LR):
     return n_best, end_LB
 
 
-def dai3_solve(graph,demands,MAX_ITER,MAX_ITER_LR):
+def dai3_solve(graph,demands,MAX_ITER,MAX_ITER_LR,timeout):
     vp  = init_from_graph(graph,demands)
 
-    n_best, end_LB = run(vp,graph,demands,MAX_ITER=MAX_ITER,MAX_ITER_LR=MAX_ITER_LR)
+    n_best, end_LB = run(vp,graph,demands,MAX_ITER=MAX_ITER,MAX_ITER_LR=MAX_ITER_LR,timeout=timeout)
     
     message = ""
     LB = end_LB

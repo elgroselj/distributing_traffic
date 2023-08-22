@@ -108,7 +108,8 @@ def generate_random_graph(n_max, t, k_num_max, cap_max, density_param=1, c_max=1
 
     edges = list(edges)
 
-    graph = nx.DiGraph()
+    graph_title = "{}_{}_{}_{}_{}_{}".format(n_max, t, k_num_max, cap_max, density_param, c_max)
+    graph = nx.DiGraph(graph_title=graph_title)
     graph.add_edges_from(edges)
 
     c = {e: random.randint(1, c_max) for e in list(graph.edges())}
@@ -139,8 +140,9 @@ def generate_random_graph(n_max, t, k_num_max, cap_max, density_param=1, c_max=1
 # hf.plot_multigraph(graph, with_labels=True,font_size=10,figure_size=(20,20))
 
 
-def generate_random_graphs(n_max, t, k_num_max, cap_max, density_param=1, c_max=10):
-    yield generate_random_graph(n_max, t, k_num_max, cap_max, density_param, c_max)
+def generate_random_graphs(number, n_max=50, t = 15, k_num_max = 1, cap_max = 3, density_param=1, c_max=10):
+    for i in range(number):
+        yield generate_random_graph(n_max, t, k_num_max, cap_max, density_param, c_max)
     
 
 
@@ -160,17 +162,22 @@ def place_to_nx(place, save=False, mode="place", point=None):
     elif mode == "point":
         # (46.05407,14.52114)
         graph_ox = ox.graph_from_point(point, dist=10000, network_type="drive")
+    
+    ox.add_edge_speeds(graph_ox)
+    ox.add_edge_travel_times(graph_ox)
+    
 
     graph = nx.convert_node_labels_to_integers(nx.DiGraph(graph_ox,graph_title=place))
 
-    filled_neto, filled_bruto = hf.fill_maxspeed(graph)
-    graph.graph["original_maxspeed1"] = 1-filled_bruto/graph.number_of_edges()
-    graph.graph["original_maxspeed2"] = 1-filled_neto/graph.number_of_edges()
+    # filled_neto, filled_bruto = hf.fill_maxspeed(graph)
+    # graph.graph["original_maxspeed1"] = 1-filled_bruto/graph.number_of_edges()
+    # graph.graph["original_maxspeed2"] = 1-filled_neto/graph.number_of_edges()
 
-    graph.edges(data=True)
-    # times = {e: np.round(
-    #     graph.edges()[e]["length"]/10,graph.edges()[e]["maxspeed"])/1000*60*60 for e in graph.edges()}
-    times =  {e: int(round(graph.edges()[e]["length"]*1000/graph.edges()[e]["maxspeed"]/60)) for e in graph.edges()}
+    # graph.edges(data=True)
+    # # times = {e: np.round(
+    # #     graph.edges()[e]["length"]/10,graph.edges()[e]["maxspeed"])/1000*60*60 for e in graph.edges()}
+    # times =  {e: int(round(graph.edges()[e]["length"]*1000/graph.edges()[e]["maxspeed"]/60)) for e in graph.edges()}
+    times = {e: int(round(graph.edges()[e]["travel_time"])) for e in graph.edges()}
     
     def type_weight(x):
         type_coef = {"motorway":1,"trunk":0.9,"primary":0.7,"secondary":0.5,"tertiary":0.3,"unclassified":0.2,"residential":0.1}
@@ -181,7 +188,7 @@ def place_to_nx(place, save=False, mode="place", point=None):
         else:
             return 0.5
         
-    capacities = {e: int(np.floor(1 + type_weight(graph.edges()[e]["highway"])*graph.edges()[e]["maxspeed"])) for e in graph.edges()}
+    capacities = {e: int(np.floor(1 + type_weight(graph.edges()[e]["highway"])*graph.edges()[e]["speed_kph"])) for e in graph.edges()}
     # capacities = {e: np.floor(graph.edges()[e]["maxspeed"]) for e in graph.edges()}
     nx.set_edge_attributes(graph, times, "c")
     nx.set_edge_attributes(graph, capacities, "cap")
@@ -206,17 +213,20 @@ def point_to_closest_node(point, graph):
     return closest_node
 
 
-def random_demands(graph,num_cars):
+def random_demands(graph,num_cars,repete_prob = 0):
     demands = []
     for car in range(num_cars):
-        while True:
+        if random.random() >= repete_prob:
             O,D = random.sample(graph.nodes(),2)
+        while True:
             try:
                 nx.dijkstra_path(graph,O,D)
             except:
+                O,D = random.sample(graph.nodes(),2)
                 continue
             demands.append((O,D,1))
             break
+            
     unique_OD = set([(O,D) for O,D,_ in demands])
     demands_ = []
     for O_,D_ in unique_OD:
@@ -254,4 +264,41 @@ def demands_latex_cell(demands):
         oblika="{}x{} ".format(num,num_k)
         l.append(oblika)
     return hf.latex_cell(l)
+
+def get_basic_example(UPPER_COST = 10):
+    graph = nx.DiGraph(graph_title = "osn")
+
+    graph.add_node(0,x=0,y=1)
+    graph.add_node(1,x=0,y=0)
+    graph.add_node(2,x=1,y=1)
+    graph.add_node(3,x=1,y=0)
+    graph.add_node(4,x=2,y=1/2)
+    graph.add_node(5,x=2,y=0)
+    graph.add_node(6,x=3,y=1)
+    graph.add_edge(0,2,c=0,cap=1)
+    graph.add_edge(1,0,c=0,cap=1)
+    graph.add_edge(1,3,c=UPPER_COST,cap=1)
+    graph.add_edge(2,3,c=0,cap=1)
+    graph.add_edge(2,4,c=0,cap=1)
+    graph.add_edge(2,6,c=UPPER_COST,cap=1)
+    graph.add_edge(3,5,c=0,cap=1)
+    graph.add_edge(5,4,c=0,cap=1)
+    graph.add_edge(6,5,c=0,cap=1)
+    
+    demands = [(1,4,1),(0,5,1)]
+    
+    
+    
+    B = nx.incidence_matrix(graph,oriented=True).todense()
+    n,m = B.shape
+    t=2
+    
+    M = np.tile(np.eye(m), t)
+    B_ = np.tile(B,(t,t))
+    
+    A = np.row_stack([M,B_,-B_])
+    print(A)
+    print(hf.is_totally_unimodular(A))
+    
+    return graph, demands
     

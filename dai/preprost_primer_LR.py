@@ -5,8 +5,8 @@ c = np.array([10,5])
 cap = np.array([2,1])
 Q = [0,1,2]
 
-lam = np.zeros(2)
-# lam = np.array([0,1])
+# lam = np.zeros(2)
+lam = np.array([0,10])
 lams = []
 zs = []
 alphas = []

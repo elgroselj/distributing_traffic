@@ -471,6 +471,10 @@ def init_from_graph(graph,demands):
     
     # spremenljivke
     vp["X"] = cp.Variable((m,t),integer=True)
+    MAX_VAR_SIZE = 2_000_000#1_000_000
+    if vp["X"].size > MAX_VAR_SIZE:
+        print("size: ", vp["X"].size)
+        return None
     vp["X_real"] = cp.Variable((m,t))
 
     # parametri
@@ -489,7 +493,7 @@ def init_from_graph(graph,demands):
 
     # dolocim vrednosti parametrom
     vp["c"] = np.round(np.array([data["c"] for _,_, data in graph.edges(data=True)])) # BŠS
-    vp["cap"] = np.floor(np.array([data["cap"] for _,_, data in graph.edges(data=True)])) # caps floor to int
+    vp["cap"] = np.floor(np.array([data["cap"] for _,_, data in graph.edges(data=True)])) # caps floor to int    
     print(vp["c"])
     print(vp["cap"])
     vp["B"] = -1 * np.array(nx.incidence_matrix(graph,oriented=True).todense())
@@ -539,7 +543,17 @@ def init_from_graph(graph,demands):
     ]
     
     
-    return (obj, constraints, obj_ex, constraints_ex_additional, vp, obj_opt, obj_biobj, obj_LP, constraints_LP)
+    obj_biobj_LP = cp.Minimize(vp["gama"] * (vp["c"].T @ cp.sum(vp["X_real"],axis=1)) +
+                            vp["zeta"] * cp.sum(cp.maximum(0, (cp.sum(vp["X_real"],axis=1) - vp["cap"]) ) ) )
+    
+    constraints_biobj_LP = [
+        vp["B"] @ vp["X_real"] == vp["H"],
+        vp["X_real"] >= 0   
+    ]
+
+    
+    
+    return (obj, constraints, obj_ex, constraints_ex_additional, vp, obj_opt, obj_biobj, obj_LP, constraints_LP, obj_biobj_LP,constraints_biobj_LP)
 
 
 def run(obj, constraints, obj_ex, constraints_ex_additional, vp,graph,demands,MAX_ITER,MAX_ITER_LR):

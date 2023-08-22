@@ -1,15 +1,23 @@
+from enum import Enum
 from itertools import compress
 import random
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
-from scipy import sparse
+from scipy import sparse, linalg
 from collections import Counter, OrderedDict
 COLORS="brgymc"
 
 import node
 import importlib
 importlib.reload(node)
+
+class Status(Enum):
+    BLANK = 0
+    OPTIMAL = 1
+    FEASIBLE = 2
+    INFEASIBLE = 3
+    OVER_CAP = 4
 
 
 def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with_arrows=True):
@@ -315,3 +323,44 @@ def latex_cell(datas):
     return stri
 
 # def latex_row(graph,demands,):
+
+
+
+def is_totally_unimodular(matrix):
+    n_rows, n_cols = matrix.shape
+
+    for i in range(n_rows):
+        for j in range(n_cols):
+            print("i: ", i)
+            if matrix[i,j] == 0: continue
+            print("j: ", j)
+            for size in range(1, min(n_rows - i, n_cols - j) + 1):
+                print("size: ", size)
+                submatrix = matrix[i:i+size, j:j+size]
+                determinant = np.linalg.det(submatrix)
+                
+                if determinant != 1 and determinant != -1 and determinant != 0:
+                    return False
+        
+        
+                    
+    return True
+
+
+def B_to_constraint_matrix(B, t):
+    _,m = B.shape
+    M = np.column_stack([np.eye(m)]*t)
+    B = B.todense()
+    Bs = [B] *t
+    B_ = linalg.block_diag(*Bs)
+    print(M)
+    A = np.row_stack([M,B_,-B_])
+    return A
+
+# t = 2
+# B = np.array([[1,1],[-1,-1]])
+# ali = is_totally_unimodular(B_to_constraint_matrix(B,2))
+# print(ali)
+
+
+    

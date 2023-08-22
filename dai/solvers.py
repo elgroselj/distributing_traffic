@@ -249,7 +249,7 @@ class Descent:
         
 
 
-    def solve(p, max_num_iter = 10, timeout = None, known_LB = None, max_num_paths_generated=1000, worsening_step_prob=0.001,max_depth=10):
+    def solve(p, max_num_iter = 10, timeout = None, known_LB = None, max_num_paths_generated=1000, worsening_step_prob=0.001,max_depth=None):
         before_t = time.perf_counter()
         
         Descent.Node.init_class(p)
@@ -259,6 +259,8 @@ class Descent:
         
         node0.evaluate()
         LB = max(known_LB, node0.cost) if known_LB is not None else node0.cost
+        if max_depth is None:
+            max_depth = node0.over_cap_count * 2 + 1
         
         node = node0
         
@@ -296,13 +298,14 @@ class Descent:
                     if improved_node.cost <= LB:
                         print("optimal")
                         break
-                    node = node.parent
+                    # node = node.parent
+                    node = node0
                     continue
             # hf.plot_solution_graph(p.graph,node.X,with_labels=True,font_size=10,figure_size=(20,20))    ch = next(node.get_child(evaluated))
             if node.level > max_depth:
-                Problem.print("max_depth")
-                node = node.parent
-                # node = node0
+                Problem.print(("max_depth:",max_depth))
+                # node = node.parent
+                node = node0
                 continue
             
             Problem.print(st-1)
@@ -311,8 +314,8 @@ class Descent:
             Problem.print((node,ch))
             if ch is None:
                 Problem.print("no more ch")
-                node = node.parent
-                # node = node0
+                # node = node.parent
+                node = node0
                 continue
                 
             node = ch
@@ -328,7 +331,8 @@ class Descent:
         if len(feasible) == 0:
             best_evaluated = min(evaluated, key= lambda node: (node.over_cap_count,node.cost))
             best_evaluated_improved = Descent.lower_the_cost(best_evaluated,feasible,allowed_over_cap_count=best_evaluated.over_cap_count)
-            status = "no_feas"
+            # status = "no_feas"
+            status = hf.Status.OVER_CAP
             X = best_evaluated_improved.X
             cost = best_evaluated_improved.cost
             # message = "over_cap_count: {}".format(best_evaluated_improved.over_cap_count)
@@ -336,60 +340,31 @@ class Descent:
         else:
             best_feasible_node = min(feasible, key= lambda node: node.cost)
             if best_feasible_node.cost == LB:
-                status = "optimal"
+                # status = "optimal"
+                status = hf.Status.OPTIMAL
             else:
-                status = "suboptimal"
+                # status = "suboptimal"
+                status = hf.Status.FEASIBLE
                 # message = "at most {} percent of optimum ({})".format(best_feasible_node.cost/LB * 100,LB)
             X = best_feasible_node.X
             cost = best_feasible_node.cost
             over_cap_count = 0
         
-        res = Problem.Result(status, X, cost, message, LB, over_cap_count)
+        res = Problem.Result(status, X, cost, message, None, over_cap_count)
         p.results[str(__class__)] = res
         return res
     
 
-
-# class Dai_solver:
-    
-#     def solve(p,MAX_ITER,MAX_ITER_LR):
-#         if not Problem.verbose:
-#             save_stdout = sys.stdout
-#             sys.stdout = open('trash', 'w')
-#         ###############################
-#         status, X, cost, message = dai.dai_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
-#         res = Problem.Result(status, X, cost, message)
-#         p.results[str(__class__)] = res
-        
-#         #################################
-#         if not Problem.verbose:
-#             sys.stdout = save_stdout
-        
-#         return res
-    
-# class Dai2_solver:
-#     def solve(p,MAX_ITER,MAX_ITER_LR):
-#         if not Problem.verbose:
-#             save_stdout = sys.stdout
-#             sys.stdout = open('trash', 'w')
-#         ###############################
-#         status, X, cost, message = dai2.dai2_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
-#         res = Problem.Result(status, X, cost, message)
-#         p.results[str(__class__)] = res
-        
-#         #################################
-#         if not Problem.verbose:
-#             sys.stdout = save_stdout
-        
-#         return res
     
 class Dai3_solver:
-    def solve(p,MAX_ITER,MAX_ITER_LR):
+    def solve(p,MAX_ITER,MAX_ITER_LR,timeout):
         if not Problem.verbose:
             save_stdout = sys.stdout
             sys.stdout = open('trash', 'w')
         ###############################
-        status, X, cost, message, LB, over_cap_count = dai3.dai3_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR)
+        status_string, X, cost, message, LB, over_cap_count = dai3.dai3_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR,timeout)
+        status_map = {"no_feas":hf.Status.BLANK,"optimal":hf.Status.OPTIMAL,"feasible":hf.Status.FEASIBLE}
+        status = status_map[status_string]
         LB = LB if isinstance(LB, float) else int(LB[0,0])
         res = Problem.Result(status, X, cost, message,LB,over_cap_count)
         p.results[str(__class__)] = res
@@ -462,18 +437,20 @@ class Keep_feasible:
     
     def finish(p,feasible,LB,message=""):
         if len(feasible) == 0:
-            status = "no_feas"
+            # status = "no_feas"
+            status = hf.Status.BLANK
             X = None
             cost = None
             over_cap_count = None
         else:
-            status = "optimal" if message == "optimal" else "feasible"
+            # status = "optimal" if message == "optimal" else "feasible"
+            status = hf.Status.OPTIMAL if message == "optimal" else hf.Status.FEASIBLE
             cost, X = min(feasible, key= lambda x: x[0])
             cost = int(cost)
         
             over_cap_count = 0
     
-        res = Problem.Result(status, X, cost,message,LB,over_cap_count)
+        res = Problem.Result(status, X, cost,message,None,over_cap_count)
         p.results[str(__class__)] = res
         return res
     
@@ -525,18 +502,20 @@ class Keep_feasible_shuffle:
     
     def finish(p,feasible,LB,message=""):
         if len(feasible) == 0:
-            status = message
+            # status = message
+            status = hf.Status.BLANK
             X = None
             cost = None
             over_cap_count = None
         else:
-            status = "optimal" if message == "optimal" else "feasible"
+            # status = "optimal" if message == "optimal" else "feasible"
+            status = hf.Status.OPTIMAL if message == "optimal" else hf.Status.FEASIBLE
             cost, X = min(feasible, key= lambda x: x[0])
             cost = int(cost)
         
             over_cap_count = 0
     
-        res = Problem.Result(status, X, cost,"",LB,over_cap_count)
+        res = Problem.Result(status, X, cost,"",None,over_cap_count)
         p.results[str(__class__)] = res
         return res
     
@@ -593,7 +572,7 @@ class Keep_feasible_shuffle:
                 return Keep_feasible_shuffle.finish(p,feasible,known_LB,message="optimal")
             
 class Optimal_cvxpy:
-    def solve(p,timeout,SOLVER="GLPK_MI"):
+    def solve(p,timeout,SOLVER="CBC"):
         # if p.graph.number_of_nodes() > 30:
         #     return
         
@@ -601,7 +580,15 @@ class Optimal_cvxpy:
             save_stdout = sys.stdout
             sys.stdout = open('trash', 'w')
         ###############################
-        _, constraints, _, constraints_ex_additional, vp, obj_opt, _,_,_  = dai.init_from_graph(p.graph,p.demands)
+        data = dai.init_from_graph(p.graph,p.demands)
+        if data is None:
+            status = hf.Status.BLANK
+            X = None
+            cost = None
+            res = Problem.Result(status, X, cost)
+            p.results[str(__class__)] = res
+            return res
+        _, constraints, _, constraints_ex_additional, vp, obj_opt, _,_,_ ,_,_ = data
         
         
         #################################
@@ -612,49 +599,68 @@ class Optimal_cvxpy:
         # _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
         problem = cp.Problem(obj_opt, constraints + constraints_ex_additional)
         #####################################33
-        if SOLVER == "CBC":
-            problem.solve(verbose=True,solver=SOLVER, maximumSeconds=timeout)
+        num_variables = problem.variables()[0].size
+        if num_variables > 10_000_000:
+            status = hf.Status.BLANK
+            cost = None
+            X = None
+        
         else:
-            problem.solve(verbose=True,solver=SOLVER)
-        ###############################333
-        # def f(SOLVER):
-        #     problem.solve(verbose=True,solver=SOLVER)
-            
-        # pr = multiprocessing.Process(target=f, name="F", args=(SOLVER,))
-        # pr.start()
-
-        # # Wait 10 seconds for foo
-        # for i in range(int(timeout)):
-        #     time.sleep(1)
-        #     print("iter")
-        #     if not pr.is_alive():
-        #         print("nono")
-        #         break
-                
-        # print("juhu")
-        # # Terminate foo
-        # pr.terminate()
-
-        # # Cleanup
-        # pr.join()
+            if SOLVER == "CBC":
+                problem.solve(verbose=True,solver=SOLVER, maximumSeconds=timeout)
+            else:
+                problem.solve(verbose=True,solver=SOLVER)
+     
+      
         ###########################################333
-        status, X, cost = (problem.status, vp["X"].value, problem.value)
-        try:
-            cost = int(cost)
-        except:
-            pass
-        res = Problem.Result(status, X, cost)
+            status_string, X, cost = (problem.status, vp["X"].value, problem.value)
+            LB = None
+            try:
+                cost = int(cost)
+            except:
+                pass
+            if "optimal" in status_string:
+                status = hf.Status.OPTIMAL
+                LB = cost
+            elif "infeasible" in status_string:
+                status = hf.Status.INFEASIBLE
+            elif isinstance(cost,int):
+                status = hf.Status.FEASIBLE
+            else:
+                status = hf.Status.BLANK
+            
+            
+        res = Problem.Result(status, X, cost, "", LB)
         p.results[str(__class__)] = res
         return res
 
 class LP_relaxation:
-    def solve(p,SOLVER="CBC"):
+    def solve(p,SOLVER="GLOP"):
+        # B = nx.incidence_matrix(p.graph,oriented=True)
+        # t = len(p.demands)
+        # # ali = hf.is_totally_unimodular(hf.B_to_constraint_matrix(B,t))
+        # ali = hf.is_totally_unimodular(B.todense())
+        # print(ali)
+        # raise Exception(ali)
+        
+        
+        
+        
+        
         
         if not Problem.verbose:
             save_stdout = sys.stdout
             sys.stdout = open('trash', 'w')
         ###############################
-        _, _, _, _, vp, _, _, obj_LP, constraints_LP  = dai.init_from_graph(p.graph,p.demands)
+        data = dai.init_from_graph(p.graph,p.demands)
+        if data is None:
+            status = hf.Status.BLANK
+            X = None
+            cost = None
+            res = Problem.Result(status, X, cost)
+            p.results[str(__class__)] = res
+            return res
+        _, _, _, _, vp, _, _, obj_LP, constraints_LP, _ ,_ = data
         
         
         #################################
@@ -665,12 +671,13 @@ class LP_relaxation:
         # _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
         problem = cp.Problem(obj_LP, constraints_LP)
         #####################################33
-        problem.solve(verbose=True,solver=SOLVER)       
+        problem.solve(verbose=True,solver=SOLVER, abstol=10e-14)       
         ###########################################333
         status_LP, X_real, val = (problem.status, vp["X_real"].value, problem.value)
         message = ""
         if status_LP == "infeasible":
-            status = "infeasible"
+            # status = "infeasible"
+            status = hf.Status.INFEASIBLE
             X = None
             cost = None
             LB = None
@@ -684,17 +691,23 @@ class LP_relaxation:
             if np.all(vp["B"] @ X == vp["H"]):
                 if np.all(s >= 0):
                     if cost == LB:
-                        status = "optimal"
+                        # status = "optimal"
+                        status = hf.Status.OPTIMAL
                     else:
-                        status = "feasible"
+                        # status = "feasible"
+                        status = hf.Status.FEASIBLE
                     over_cap_count = 0
                 
                 else:
-                    status = "over_cap"
+                    # status = "over_cap"
+                    status = hf.Status.OVER_CAP
                     over_cap_count = -np.sum(s[s<0])
                     # message += "over_cap: {}".format()
             else:
-                status = "no_solution_found"
+                message="rounding unsuccessful"
+                # status = "no_solution_found"
+                status = hf.Status.BLANK
+                X = None
                 cost = None
                 over_cap_count = None
                 
@@ -705,12 +718,20 @@ class LP_relaxation:
         return res
     
 class Biobjective:
-    def solve(p, importance_factor = 0.5, SOLVER = "CBC",known_LB=None):
+    def solve(p, importance_factor = 10e-5, SOLVER = "CBC",known_LB=None):
         if not Problem.verbose:
             save_stdout = sys.stdout
             sys.stdout = open('trash', 'w')
         ###############################
-        _, constraints, _, _, vp, _, obj_biobj,_,_  = dai.init_from_graph(p.graph,p.demands)
+        data = dai.init_from_graph(p.graph,p.demands)
+        if data is None:
+            status = hf.Status.BLANK
+            X = None
+            cost = None
+            res = Problem.Result(status, X, cost)
+            p.results[str(__class__)] = res
+            return res
+        _, constraints, _, _, vp, _, obj_biobj,_,_ ,_, _ = data
         
         
         #################################
@@ -730,7 +751,8 @@ class Biobjective:
         over_cap_count = None
         
         if problem.status == "infeasible":
-            status = problem.status
+            # status = problem.status
+            status = hf.Status.INFEASIBLE
         else:
         
             cost = int(vp["c"].T @ X.sum(axis=1))
@@ -739,19 +761,99 @@ class Biobjective:
             over_cap_count = np.sum(np.max( [np.zeros(len(over_flow)), over_flow], axis=0))
             # over_cap_count = 100
             # message = "over_cap_count: {}".format(over_cap_count)
-        
+            neki = vp["gama"].value * cost + vp["zeta"].value * over_cap_count
+            
         
             if problem.status == "optimal" and over_cap_count == 0:
                 if known_LB is not None and cost == known_LB:
-                    status = "optimal"
+                    # status = "optimal"
+                    status = hf.Status.OPTIMAL
                 else:
-                    status = "feasible"
+                    # status = "feasible"
+                    status = hf.Status.FEASIBLE
             else:
-                status = "over_cap"
+                # status = "over_cap"
+                status = hf.Status.OVER_CAP
             
-        res = Problem.Result(status, X, cost, message,known_LB,over_cap_count)
+        res = Problem.Result(status, X, cost, message,None,over_cap_count)
         p.results[str(__class__)] = res
         return res
+    
+class Biobjective_LP:
+    def solve(p, importance_factor = 10e-5, SOLVER = "GLOP",known_LB=None):
+        if not Problem.verbose:
+            save_stdout = sys.stdout
+            sys.stdout = open('trash', 'w')
+        ###############################
+        data = dai.init_from_graph(p.graph,p.demands)
+        if data is None:
+            status = hf.Status.BLANK
+            X = None
+            cost = None
+            res = Problem.Result(status, X, cost)
+            p.results[str(__class__)] = res
+            return res
+        _, _, _, _, vp, _, _,_,_,obj_biobj_LP,constraints_biobj_LP = data
+        
+        
+        #################################
+        if not Problem.verbose:
+            sys.stdout = save_stdout
+            
+        problem = cp.Problem(obj_biobj_LP, constraints_biobj_LP)
+        
+        vp["gama"].value = importance_factor
+        vp["zeta"].value = 1 - importance_factor
+        problem.solve(verbose=True,solver=SOLVER)
+        
+        
+        X_real = vp["X_real"].value
+        # cost = None
+        message = ""
+        # over_cap_count = None
+        
+        if problem.status == "infeasible":
+            # status = problem.status
+            status = hf.Status.INFEASIBLE
+            X = None
+            cost = None
+            LB = None
+            over_cap_count = None
+        else:
+            X = np.round(X_real)
+            # LB = int(np.round(problem.value))
+            # message = "{} is LB".format(LB)
+            s = vp["cap"] - X.sum(axis=1)
+            cost = int(vp["c"].T @ X.sum(axis=1))
+            if np.all(vp["B"] @ X == vp["H"]):
+                if np.all(s >= 0):
+                    if known_LB is not None and cost == known_LB:
+                    # if "optimal" in problem.status:
+                        # status = "optimal"
+                        status = hf.Status.OPTIMAL
+                    else:
+                        # status = "feasible"
+                        status = hf.Status.FEASIBLE
+                    over_cap_count = 0
+                
+                else:
+                    # status = "over_cap"
+                    status = hf.Status.OVER_CAP
+                    over_cap_count = -np.sum(s[s<0])
+                    # message += "over_cap: {}".format()
+            else:
+                message="rounding unsuccessful"
+                # status = "no_solution_found"
+                status = hf.Status.BLANK
+                cost = None
+                over_cap_count = None
+                
+                
+            
+        res = Problem.Result(status, X, cost, message, None, over_cap_count)
+        p.results[str(__class__)] = res
+        return res
+    
 class DnC:
     def divide_demands(p,dim="x"):
         val = sum([ (p.graph.nodes()[O][dim] + p.graph.nodes()[D][dim])/2 for O,D,_ in p.demands]) / len(p.demands)
@@ -786,13 +888,13 @@ class DnC:
         else:
             Problem.print((demandsL,demandsR,demands_remaining))
             subproblem1 = Problem(p.graph,demandsL)
-            res = Biobjective.solve(subproblem1,importance_factor=10e-8)
+            res = Biobjective.solve(subproblem1)
             X1 = res.X
         if len(demandsR) == 0:
             X2 = None
         else:
             subproblem2 = Problem(p.graph,demandsR)
-            res = Biobjective.solve(subproblem2,importance_factor=10e-8)
+            res = Biobjective.solve(subproblem2)
             X2 = res.X
             
         graph_ = nx.DiGraph(p.graph)
@@ -811,8 +913,13 @@ class DnC:
             nx.set_edge_attributes(graph_, {e: float(new_cap[ei]) for ei,e in enumerate(graph_.edges())},"cap")
             
         final_problem = Problem(graph_,demands_remaining)
-        res = Biobjective.solve(final_problem,importance_factor=10e-8)
+        res = Biobjective.solve(final_problem)
         X3 = res.X
+        
+        if X3 is None:
+            res = Problem.Result(status=hf.Status.BLANK, X=None, cost=None)
+            p.results[str(__class__)] = res
+            return res
         
         l = []
         if X1 is not None: l.append(sparse.csr_matrix(X1))
@@ -830,13 +937,16 @@ class DnC:
         
         if over_cap_count == 0:
             if known_LB is not None and known_LB == cost:
-                status = "optimal"
+                # status = "optimal"
+                status = hf.Status.OPTIMAL
             else:
-                status = "feasible"
+                # status = "feasible"
+                status = hf.Status.FEASIBLE
         else:
-            status = "over_cap"
+            # status = "over_cap"
+            status = hf.Status.OVER_CAP
             
-        res = Problem.Result(status, X, cost, message, known_LB, over_cap_count)
+        res = Problem.Result(status, X, cost, message, None, over_cap_count)
         p.results[str(__class__)] = res
         return res
                   
