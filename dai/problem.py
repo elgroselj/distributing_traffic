@@ -7,6 +7,7 @@ import helper_functions as hf
 class Problem():
     verbose = False
     status_map = {hf.Status.BLANK:"-",hf.Status.OPTIMAL:"opt",hf.Status.FEASIBLE:"dop",hf.Status.INFEASIBLE:"nedop",hf.Status.OVER_CAP:"preko"}
+    formater = lambda x: '{:,}'.format(x).replace(","," ")
     def __init__(self, graph, demands):
         self.graph = graph
     
@@ -81,8 +82,8 @@ class Problem():
         def latex_cell(self):
             # return hf.latex_cell([("cena", self.cost), ("rač. čas", round(self.time, 3)), ("status", self.status),
             #         ("sporočilo", self.message), ("sp. meja", self.LB), ("preko", self.over_cap_count)],with_field_names=False)
-            style_int = lambda x: int(x) if (isinstance(x,int) or isinstance(x,float)) and x is not None else "-"
-            style_float = lambda x: round(x, 3) if (isinstance(x,int) or isinstance(x,float)) and x is not None else "-"
+            style_int = lambda x: Problem.formater(int(x)) if (isinstance(x,int) or isinstance(x,float)) and x is not None and x < np.inf else "-"
+            style_float = lambda x: Problem.formater(hf.myround(x)) if (isinstance(x,int) or isinstance(x,float)) and x is not None else "-"
             return hf.latex_cell([style_int(self.cost), style_float(self.percent_of_min), round(self.time, 3), Problem.status_map[self.status], style_int(self.LB), style_int(self.over_cap_count)])
     
     class Result_grouped():

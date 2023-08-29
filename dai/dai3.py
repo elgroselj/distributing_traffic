@@ -1,6 +1,6 @@
 import time
 import cvxpy as cp
-from matplotlib import pyplot as plt
+from matplotlib import cm, pyplot as plt
 import numpy as np
 import random
 import networkx as nx
@@ -78,7 +78,8 @@ class Node:
                "status":"neki",
                "X":None,
                "cap_ok":False,
-               "s":None}
+               "s":None,
+               "over_cap_count":None}
         
        
         flag = 0 # povečamo ko smo v biližini LB => manjšati beto
@@ -91,6 +92,10 @@ class Node:
         zi = None # vpliva na korak
         # zi = UB_ # meje so ful slabše tko -100
         sol["z"] = np.inf
+        min_over_cap_count = None
+        min_over_cap_X = None
+        min_over_cap_cost = None
+        min_over_cap_node = None
         
         values = []
         lams = []
@@ -108,6 +113,10 @@ class Node:
             # print(time_diff)
             ###############################
             X, status, zLD, s = ss.dijkstra0(self.vp, graph, demands, alpha)
+            # print(s[:,[0,6]])
+            # print(s)
+            # print(self.vp["lam"])           
+            # hf.plot_solution_graph(self.graph,X,edge_label1="alt_c",font_size=12,demands=demands,node_size=150,figure_size=(5,5))
             # X, status, zLD, s = ss.astar(self.vp, graph, demands, alpha)
             lams.append(np.copy(self.vp["lam"]))
             ###############################################
@@ -117,7 +126,7 @@ class Node:
                 self.sol["status"] = status
                 return
             
-        
+            
             values.append(zLD)
             
             # if np.all(np.sum(X,axis=1) <= self.vp["cap"]):#X* is feasible:
@@ -132,10 +141,16 @@ class Node:
                     sol["status"] = "feasible"
                     sol["cap_ok"] = True
                     sol["lam"] = self.vp["lam"]
-                    
-                    
-                    
-
+                    sol["over_cap_count"] = 0
+            elif zi is None:
+                over_cap_count = -np.sum(s[s<0])
+                over_cap_cost = int(self.vp["c"].T @ X.sum(axis=1))
+                if (min_over_cap_count is None or over_cap_count < min_over_cap_count or 
+                    (over_cap_count == min_over_cap_count and over_cap_cost < min_over_cap_cost)):
+                    min_over_cap_count = over_cap_count
+                    min_over_cap_cost = over_cap_cost
+                    min_over_cap_X = X
+                
             if zLD < LB:
                 flag = 3
             else:
@@ -192,7 +207,13 @@ class Node:
                 sol["cap_ok"] = True
                 sol["X"] = X
             else:
-                sol["status"] = "no_feasible_solution_found"
+                if min_over_cap_X is None:
+                    sol["status"] = "no_feasible_solution_found"
+                else:
+                    sol["status"] = "over_cap"
+                    sol["X"] = min_over_cap_X
+                    sol["z"] = min_over_cap_cost
+                    sol["over_cap_count"] = min_over_cap_count
             
             
         self.sol = sol
@@ -232,7 +253,7 @@ class Node:
             
         return stri
 
-def init_from_graph(graph,demands):
+def init_from_graph(graph,demands,lam0=None):
     # razberem dimenzije
     n = len(graph.nodes()) # 6 # |V|
     m = len(graph.edges()) # 10 # |E|
@@ -259,7 +280,7 @@ def init_from_graph(graph,demands):
             H[Dk,k] = -d
         return H.tolil()      
     vp["H"] = demands_to_matrix(demands,n)
-    vp["lam"] = sparse.lil_array(np.zeros((m)))
+    vp["lam"] = sparse.lil_array(np.zeros((m))) if lam0 is None else sparse.lil_array(lam0)
 
 
     return vp
@@ -290,23 +311,33 @@ def run(vp,graph,demands,MAX_ITER,MAX_ITER_LR,timeout):
     UB = np.sum(vp["c"]) * vp["H"].tocsr().max(axis=0).sum() # to je vsi komoditiji grejo po vseh povezavah
     returned = n.solve(LB,UB,graph,demands,timeout)
     
+    print("optimal lambda")
+    print(vp["lam"])
+    
     if False:
+        plt.rcParams.update({'font.size': 17})
         try:
             values, lams, alphas = returned
         except:
             pass
         
         try:
+            plt.title("konvergenca k v*")
+            plt.xlabel("iteracija")
+            plt.ylabel("približek za v*")
             plt.plot(values)
             plt.show()
         except:
             pass
         
-        # try:
-        #     plt.plot([lam[0] for lam in lams])
-        #     plt.show()
-        # except:
-        #     pass
+        try:
+            plt.title("konvergenca lambde po komponentah")
+            plt.xlabel("iteracija")
+            plt.ylabel("vrednosti komponent lambde")
+            plt.plot([lam[0] for lam in lams])
+            plt.show()
+        except:
+            pass
         
         # try:
         #     plt.plot(alphas)
@@ -320,6 +351,28 @@ def run(vp,graph,demands,MAX_ITER,MAX_ITER_LR,timeout):
         #         plt.show()
         # except:
         #     pass
+        
+        
+        norm_values = np.array(values)
+        norm_values = norm_values- min(norm_values)
+        norm_values = norm_values/ max(norm_values)
+        x = [lam[:,0] for lam in lams]
+        y = [lam[:,6] for lam in lams]
+        plt.scatter(x,y,c=values)
+        # plt.scatter(x,y,s=norm_values*20)
+        for i,(xi, yi) in enumerate(zip(x, y)):
+            if i > 13 : i = None
+            plt.text(xi, yi, i, va='bottom', ha='center')
+        
+        plt.xlabel("lambda_1")
+        plt.ylabel("lambda_7")
+        plt.title("konvergenca k v*")
+        cbar = plt.colorbar()
+        cbar.set_label('približek za v*')
+        plt.show()
+        
+        
+        
     
     
     
@@ -342,10 +395,12 @@ def run(vp,graph,demands,MAX_ITER,MAX_ITER_LR,timeout):
         if z == zLD_ceil:
             # n.sol["status"] += " OPTIMAL for I"
             n.sol["status"] = "optimal"
-    else:
-        if n.sol["z"] == n.sol["zLD_ceil"]: # TODO sam pol se da popravit??
-            # n.sol["status"] += " OPTIMAL VALUE for I, NO SOLUTION"
-            n.sol["status"] = "optimal_but_no_solution_found"
+    # else:
+        # if n.sol["z"] == n.sol["zLD_ceil"]: # TODO sam pol se da popravit??
+        #     # n.sol["status"] += " OPTIMAL VALUE for I, NO SOLUTION"
+        #     n.sol["status"] = "optimal_but_no_solution_found"
+        # if n.sol["status"] == "over_cap":
+        #     n.sol["X"]
         
 
 
@@ -358,14 +413,13 @@ def run(vp,graph,demands,MAX_ITER,MAX_ITER_LR,timeout):
         
     if n_best is not None:
         print(repr(n_best))
-        print(sparse.csr_matrix(n_best.sol["X"]))
-        
+        print(sparse.csr_matrix(n_best.sol["X"]))   
 
-    return n_best, end_LB
+    return n, end_LB, 
 
 
-def dai3_solve(graph,demands,MAX_ITER,MAX_ITER_LR,timeout):
-    vp  = init_from_graph(graph,demands)
+def dai3_solve(graph,demands,MAX_ITER,MAX_ITER_LR,timeout,lam0 = None):
+    vp  = init_from_graph(graph,demands,lam0=lam0)
 
     n_best, end_LB = run(vp,graph,demands,MAX_ITER=MAX_ITER,MAX_ITER_LR=MAX_ITER_LR,timeout=timeout)
     
@@ -378,7 +432,7 @@ def dai3_solve(graph,demands,MAX_ITER,MAX_ITER_LR,timeout):
         over_cap_count = None
     else: 
         status, X, z = (n_best.sol["status"], n_best.sol["X"], n_best.sol["z"])
-        over_cap_count = 0 if z < np.inf else None
+        over_cap_count = n_best.sol["over_cap_count"]
         
         
     return (status,X,z,message,LB,over_cap_count)

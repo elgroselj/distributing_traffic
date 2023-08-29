@@ -494,8 +494,8 @@ def init_from_graph(graph,demands):
     # dolocim vrednosti parametrom
     vp["c"] = np.round(np.array([data["c"] for _,_, data in graph.edges(data=True)])) # BŠS
     vp["cap"] = np.floor(np.array([data["cap"] for _,_, data in graph.edges(data=True)])) # caps floor to int    
-    print(vp["c"])
-    print(vp["cap"])
+    # print(vp["c"])
+    # print(vp["cap"])
     vp["B"] = -1 * np.array(nx.incidence_matrix(graph,oriented=True).todense())
     def demands_to_matrix(demands,n):
         H = np.zeros((n,len(demands)))
@@ -504,8 +504,8 @@ def init_from_graph(graph,demands):
             H[Dk,k] = -d
         return H      
     vp["H"] = demands_to_matrix(demands,n)
-    print(vp["H"])
-    vp["lam"].value = np.zeros(m)
+    # print(vp["H"])
+    vp["lam"].value = np.zeros(m) 
     vp["gama"].value = 0.5
     vp["zeta"].value = 0.5
     # vp["eta"].value = np.zeros((m,t))

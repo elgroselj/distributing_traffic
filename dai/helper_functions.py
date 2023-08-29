@@ -6,7 +6,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from scipy import sparse, linalg
 from collections import Counter, OrderedDict
-COLORS="brgymc"
+# COLORS="brgymc"
+# COLORS=plt.cm.Spectral(range(10))
 
 import node
 import importlib
@@ -19,8 +20,11 @@ class Status(Enum):
     INFEASIBLE = 3
     OVER_CAP = 4
 
+def k_to_color(k,t):
+    return plt.cm.gist_rainbow(k/t)
 
-def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with_arrows=True):
+
+def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with_arrows=True,edge_label1="c", edge_label2="cap",node_size=0,demands=None):
     plt.figure(figsize=figure_size)
     G = nx.MultiDiGraph(graph)
     try:
@@ -32,12 +36,37 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with
         except:
             pos = nx.circular_layout(G)
             # pos = nx.spring_layout(G)
-            
-    nx.draw_networkx_nodes(G, pos, node_size=0, alpha=1)
+    if demands is None:
+        nx.draw_networkx_nodes(G, pos, node_size=node_size,alpha=0.2)
+    else:
+        node_sizes = []
+        node_colors = []
+        alphas = []
+        for node in G.nodes():
+            l = [(k,num_k) for k,(O,D,num_k) in enumerate(demands) if node in [O,D]]
+            if len(l) == 0:
+                node_sizes.append(node_size)
+                node_colors.append("k")
+                alphas.append(0.2)
+            else:
+                k, end_node_size_add = max(l,key = lambda x: x[1])
+                # end_node_color = COLORS[k%len(COLORS)]
+                end_node_color = k_to_color(k,len(demands))
+                
+                node_sizes.append(end_node_size_add* (node_size+2)*4)
+                node_colors.append(end_node_color)
+                alphas.append(0.5)
+        nx.draw_networkx_nodes(G, pos, node_size=node_sizes,node_color=node_colors,alpha=alphas)
     nx.draw_networkx_labels(G, pos, font_size=font_size)
     ax = plt.gca()
     for e in G.edges:
         edge_color = G.edges[e]["color"] if "color" in G.edges[e] else "k"
+        if "over_cap" in G.edges[e] and G.edges[e]["over_cap"]:
+            linewidth = 7
+        elif edge_color != "k":
+            linewidth = 2
+        else:
+            linewidth = 1
         ax.annotate("",
                     xy=pos[e[1]], xycoords='data',
                     xytext=pos[e[0]], textcoords='data',
@@ -45,13 +74,19 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with
                                     shrinkA=5, shrinkB=5,
                                     patchA=None, patchB=None,
                                     connectionstyle="arc3,rad=rrr".replace('rrr', str(0.1 * (e[2] + 1))),
-                                    linewidth= 7 if "over_cap" in G.edges[e] and G.edges[e]["over_cap"] else 1
+                                    linewidth= linewidth
                                     ),
                     )
     if with_labels:
         digraph = nx.DiGraph(G)
+        def f(e):
+            if np.round(digraph.edges[e][edge_label1]) == digraph.edges[e][edge_label1]:
+                return "{},{}".format(int(np.round(digraph.edges[e][edge_label1])), int(np.floor(digraph.edges[e][edge_label2])))
+            else:
+                return "{},{}".format(np.round(digraph.edges[e][edge_label1],3), int(np.floor(digraph.edges[e][edge_label2])))
+            
         nx.draw_networkx_edge_labels(digraph, pos,
-                                     edge_labels={e: "{},{}".format(int(np.round(digraph.edges[e]["c"])), int(np.floor(digraph.edges[e]["cap"])))
+                                     edge_labels={e: f(e)
                                                   for e in list(digraph.edges)},
                                      font_size=font_size,
                                      label_pos=0.3)
@@ -59,18 +94,20 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with
     plt.axis('off')
     plt.show()
 
-def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20),with_arrows=True,over_cap_edges=[]):
+def plot_solution_graph(graph,X,with_labels=True,font_size=5,figure_size=(20,20),with_arrows=True,over_cap_edges=[],edge_label1="c", edge_label2="cap",node_size=0,demands=None):
     nx.set_edge_attributes(graph,{e:(e in over_cap_edges) for e in list(graph.edges())},"over_cap")
     multi = nx.MultiDiGraph(graph)
     print("k\tCOLOR")
 
+    _,t = X.shape
     
     for k in range(X.shape[1]):
         path = [e for i,e in enumerate(graph.edges()) if X[i,k] != 0]
-        multi.add_edges_from(path, color=COLORS[k%len(COLORS)])
-        print(k,"\t",COLORS[k%len(COLORS)])
+        # multi.add_edges_from(path, color=COLORS[k%len(COLORS)])
+        multi.add_edges_from(path, color=k_to_color(k,t))
+        # print(k,"\t",COLORS[k%len(COLORS)])
     # print(list(multi.edges()))
-    plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size,with_arrows=with_arrows)
+    plot_multigraph(multi,with_labels=with_labels,font_size=font_size,figure_size=figure_size,with_arrows=with_arrows,edge_label1=edge_label1, edge_label2=edge_label2,node_size=node_size,demands=demands)
     
 # def plot_solution_graph_from_dict(graph,X_dict,with_labels=True,font_size=5,figure_size=(20,20)):
 #     multi = nx.MultiDiGraph(graph)
@@ -170,6 +207,11 @@ def edges_to_binary_vector(el, edges):
         
     return(ev)
 
+def paths_to_X(paths,edges):
+    binvectors = [edges_to_binary_vector(nodes_to_edges_path(path),edges) for path in paths]
+    X = np.column_stack(binvectors)
+    return X
+
 
 def binary_vector_to_edges(ev, edges):
     return list(compress(edges, ev))
@@ -184,16 +226,16 @@ def columns_to_paths(g,X,edges_mode=False):
             paths.append(nodes_to_edges_path(binary_vector_to_edges(X[:,i],g.edges()), inverse=True))
     return paths
 
-def split_column(col, edges):
-    el = binary_vector_to_edges(col, edges)
-    # TODO
+# def split_column(col, edges):
+#     el = binary_vector_to_edges(col, edges)
+#     # TODO
 
-def X_to_Q(g, X):
-    pass # TODO
-    Q = None
-    for i in range(X.shape()[1]):
-        new_cols = split_column(X[:,i])
-        Q = new_cols if Q is None else np.column_stack([Q,new_cols])
+# def X_to_Q(g, X):
+#     pass # TODO
+#     Q = None
+#     for i in range(X.shape()[1]):
+#         new_cols = split_column(X[:,i])
+#         Q = new_cols if Q is None else np.column_stack([Q,new_cols])
 
 ###########################################################################################
 
@@ -362,5 +404,19 @@ def B_to_constraint_matrix(B, t):
 # ali = is_totally_unimodular(B_to_constraint_matrix(B,2))
 # print(ali)
 
+import math
+def myround(n_):
+    if n_ == 1.0:
+        return n_
+    n = n_ - 1
+    if n == 0:
+        return 0
+    sgn = -1 if n < 0 else 1
+    scale = int(-math.floor(math.log10(abs(n))))
+    if scale <= 0:
+        scale = 1
+    factor = 10**scale
+    res = sgn*math.floor(abs(n)*factor)/factor
+    return res +1
 
-    
+# print(myround(1.03))

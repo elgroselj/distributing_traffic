@@ -357,13 +357,13 @@ class Descent:
 
     
 class Dai3_solver:
-    def solve(p,MAX_ITER,MAX_ITER_LR,timeout):
+    def solve(p,MAX_ITER,MAX_ITER_LR,timeout,lam0=None):
         if not Problem.verbose:
             save_stdout = sys.stdout
             sys.stdout = open('trash', 'w')
         ###############################
-        status_string, X, cost, message, LB, over_cap_count = dai3.dai3_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR,timeout)
-        status_map = {"no_feas":hf.Status.BLANK,"optimal":hf.Status.OPTIMAL,"feasible":hf.Status.FEASIBLE}
+        status_string, X, cost, message, LB, over_cap_count = dai3.dai3_solve(p.graph,p.demands,MAX_ITER,MAX_ITER_LR,timeout,lam0=lam0)
+        status_map = {"no_feas":hf.Status.BLANK,"optimal":hf.Status.OPTIMAL,"feasible":hf.Status.FEASIBLE,"over_cap":hf.Status.OVER_CAP}
         status = status_map[status_string]
         LB = LB if isinstance(LB, float) else int(LB[0,0])
         res = Problem.Result(status, X, cost, message,LB,over_cap_count)
@@ -492,7 +492,7 @@ class Keep_feasible:
             feasible.append((cost,X))
             if known_LB is not None and cost <= known_LB:
                 Problem.print("optimal")
-                return Keep_feasible_shuffle.finish(p,feasible,known_LB,message="optimal")
+                return Keep_feasible.finish(p,feasible,known_LB,message="optimal")
             # Problem.print("*")
         Problem.print(feasible)
         return Keep_feasible.finish(p,feasible,known_LB,message="all_permutations")
@@ -615,6 +615,7 @@ class Optimal_cvxpy:
         ###########################################333
             status_string, X, cost = (problem.status, vp["X"].value, problem.value)
             LB = None
+            overcap = None
             try:
                 cost = int(cost)
             except:
@@ -622,15 +623,17 @@ class Optimal_cvxpy:
             if "optimal" in status_string:
                 status = hf.Status.OPTIMAL
                 LB = cost
+                overcap = 0
             elif "infeasible" in status_string:
                 status = hf.Status.INFEASIBLE
             elif isinstance(cost,int):
                 status = hf.Status.FEASIBLE
+                overcap = 0
             else:
                 status = hf.Status.BLANK
             
             
-        res = Problem.Result(status, X, cost, "", LB)
+        res = Problem.Result(status, X, cost, "", None,overcap)
         p.results[str(__class__)] = res
         return res
 
@@ -642,12 +645,6 @@ class LP_relaxation:
         # ali = hf.is_totally_unimodular(B.todense())
         # print(ali)
         # raise Exception(ali)
-        
-        
-        
-        
-        
-        
         if not Problem.verbose:
             save_stdout = sys.stdout
             sys.stdout = open('trash', 'w')
@@ -671,10 +668,10 @@ class LP_relaxation:
         # _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
         problem = cp.Problem(obj_LP, constraints_LP)
         #####################################33
-        problem.solve(verbose=True,solver=SOLVER, abstol=10e-14)       
+        problem.solve(verbose=True,solver=SOLVER)       
         ###########################################333
         status_LP, X_real, val = (problem.status, vp["X_real"].value, problem.value)
-        message = ""
+        message = "val: {}".format(val)
         if status_LP == "infeasible":
             # status = "infeasible"
             status = hf.Status.INFEASIBLE
@@ -718,7 +715,7 @@ class LP_relaxation:
         return res
     
 class Biobjective:
-    def solve(p, importance_factor = 10e-5, SOLVER = "CBC",known_LB=None):
+    def solve(p, importance_factor = 1e-4, SOLVER = "CBC",known_LB=None):
         if not Problem.verbose:
             save_stdout = sys.stdout
             sys.stdout = open('trash', 'w')
@@ -742,7 +739,7 @@ class Biobjective:
         
         vp["gama"].value = importance_factor
         vp["zeta"].value = 1 - importance_factor
-        problem.solve(verbose=True,solver=SOLVER)
+        problem.solve(verbose=True,solver=SOLVER,allowableGap=importance_factor/10)
         
         
         X = vp["X"].value
@@ -780,7 +777,7 @@ class Biobjective:
         return res
     
 class Biobjective_LP:
-    def solve(p, importance_factor = 10e-5, SOLVER = "GLOP",known_LB=None):
+    def solve(p, importance_factor = 1e-4, SOLVER = "GLOP",known_LB=None):
         if not Problem.verbose:
             save_stdout = sys.stdout
             sys.stdout = open('trash', 'w')
@@ -874,7 +871,7 @@ class DnC:
             
         
         
-    def solve(p,known_LB = None):
+    def solve(p,importance_factor=1e-4,known_LB = None):
         try:
             demandsL,demandsR,demands_remaining = DnC.divide_demands(p,dim="x")
         except:
@@ -888,13 +885,13 @@ class DnC:
         else:
             Problem.print((demandsL,demandsR,demands_remaining))
             subproblem1 = Problem(p.graph,demandsL)
-            res = Biobjective.solve(subproblem1)
+            res = Biobjective.solve(subproblem1,importance_factor=importance_factor)
             X1 = res.X
         if len(demandsR) == 0:
             X2 = None
         else:
             subproblem2 = Problem(p.graph,demandsR)
-            res = Biobjective.solve(subproblem2)
+            res = Biobjective.solve(subproblem2,importance_factor=importance_factor)
             X2 = res.X
             
         graph_ = nx.DiGraph(p.graph)
@@ -911,12 +908,15 @@ class DnC:
             print("new_cap.shape: ",new_cap.shape, new_cap[0])
             new_cap[new_cap < 0] = 0
             nx.set_edge_attributes(graph_, {e: float(new_cap[ei]) for ei,e in enumerate(graph_.edges())},"cap")
-            
-        final_problem = Problem(graph_,demands_remaining)
-        res = Biobjective.solve(final_problem)
-        X3 = res.X
         
-        if X3 is None:
+        if len(demands_remaining) == 0:
+            X3 = None
+        else:
+            final_problem = Problem(graph_,demands_remaining)
+            res = Biobjective.solve(final_problem,importance_factor=importance_factor)
+            X3 = res.X
+        
+        if X3 is None and len(demands_remaining) != 0:
             res = Problem.Result(status=hf.Status.BLANK, X=None, cost=None)
             p.results[str(__class__)] = res
             return res
@@ -949,4 +949,296 @@ class DnC:
         res = Problem.Result(status, X, cost, message, None, over_cap_count)
         p.results[str(__class__)] = res
         return res
-                  
+class BnB:
+    class Node:
+        def __init__(self,p,vp,obj,constraints) -> None:
+            self.p = p
+            self.vp = vp
+            self.obj = obj
+            self.constraints = constraints
+            
+            self.LB = None
+            self.status = None
+            self.X = None
+            self.X_real = None
+            self.cost = None
+            self.message = None
+            self.over_cap_count = None
+            
+            self.children = None
+            
+            self.branching = None
+            
+        def evaluate(self):
+            problem = cp.Problem(self.obj, self.constraints)
+            # if not Problem.verbose:
+            #     sys.stdout = save_stdout
+            
+        
+            problem.solve(verbose=True,solver="GLOP")       
+        ###########################################333
+            status_LP, X_real, val = (problem.status, self.vp["X_real"].value, problem.value)
+            self.X_real = X_real
+            if status_LP == "infeasible":
+                self.status = hf.Status.INFEASIBLE
+            else:
+                X = np.round(X_real)
+                LB = int(np.round(val))
+                s = self.vp["cap"] - X.sum(axis=1)
+                cost = int(self.vp["c"].T @ X.sum(axis=1))
+                message = ""
+                if np.all(self.vp["B"] @ X == self.vp["H"]):
+                    if np.all(s >= 0):
+                        if cost == LB:
+                            status = hf.Status.OPTIMAL
+                        else:
+                            status = hf.Status.FEASIBLE
+                        over_cap_count = 0
+                    
+                    else:
+                        status = hf.Status.OVER_CAP
+                        over_cap_count = -np.sum(s[s<0])
+                else:
+                    message="rounding unsuccessful"
+                    status = hf.Status.BLANK
+                    cost = None
+                    over_cap_count = None
+                self.X = X
+                self.status = status
+                self.LB = LB
+                self.cost = cost
+                self.message = message
+                self.over_cap_count = over_cap_count
+        
+        def create_children(self):
+            a,k = np.unravel_index(np.argmax(np.abs(self.X - self.X_real)),self.X.shape) # najdlje od celega števila
+            val = self.X_real[a,k]
+            self.branching = (a,list(self.p.graph.edges())[a],k,val)
+            fl = int(np.floor(val))
+            ce = int(np.ceil(val))
+            ch1 = BnB.Node(self.p,self.vp,self.obj,list(self.constraints)+ [self.vp["X_real"][a,k] >= ce])
+            ch2 = BnB.Node(self.p,self.vp,self.obj,list(self.constraints)+ [self.vp["X_real"][a,k] <= fl])
+            self.children = [ch1,ch2]
+        
+        def __str__(self, level=0):
+            ret = "\t"*level+repr(self)+"\n"
+            if self.children is not None:
+                for child in self.children:
+                    ret += child.__str__(level+1)
+            return ret
+        
+        def __repr__(self) -> str:
+            return "{}, cost: {}, LB: {}, branching: {}".format(self.status, self.cost, self.LB, self.branching)
+            
+        
+    def solve(p):
+        data = dai.init_from_graph(p.graph,p.demands)
+        if data is None:
+            status = hf.Status.BLANK
+            X = None
+            cost = None
+            res = Problem.Result(status, X, cost)
+            p.results[str(__class__)] = res
+            return res
+        _, _, _, _, vp, _, _,obj_LP, constraints_LP,_,_ = data
+        obj = obj_LP
+        constraints = constraints_LP
+        
+        node0 = BnB.Node(p,vp,obj,constraints)
+        
+        
+        todo = [node0]
+        node_UB = None
+        while len(todo) > 0:
+            node = todo.pop()
+            node.evaluate()
+            
+            if node.status in [hf.Status.OPTIMAL, hf.Status.FEASIBLE]:
+                if node_UB is None or node_UB.cost > node.cost:
+                    node_UB = node
+                    
+            if node.status == hf.Status.OPTIMAL:
+                continue
+            elif node.status == hf.Status.INFEASIBLE:
+                continue
+            elif node_UB is not None and node.LB > node_UB.cost:
+                continue
+            
+            node.create_children()
+            ch1,ch2 = node.children
+            todo += [ch1,ch2]
+        
+        print(node0)
+        
+        if node_UB is None:
+            res = Problem.Result(hf.Status.INFEASIBLE, None, None)
+            p.results[str(__class__)] = res
+            return res
+        else:
+            res = Problem.Result(hf.Status.OPTIMAL, node_UB.X, node_UB.cost, node_UB.message, None, node_UB.over_cap_count)
+            p.results[str(__class__)] = res
+            return res
+
+class BnB_biobj:
+    class Node:
+        EPSI = 1e-11
+        def __init__(self,p,vp,obj,constraints) -> None:
+            self.p = p
+            self.vp = vp
+            self.obj = obj
+            self.constraints = constraints
+            
+            self.LB = None
+            self.status = None
+            self.X = None
+            self.X_real = None
+            self.cost = None
+            self.message = None
+            self.over_cap_count = None
+            
+            self.children = None
+            
+        def evaluate(self,mode):
+            problem = cp.Problem(self.obj, self.constraints)
+            # if not Problem.verbose:
+            #     sys.stdout = save_stdout
+            
+        
+            problem.solve(verbose=True,solver="GLOP")       
+        ###########################################333
+            status_LP, X_real, val = (problem.status, self.vp["X_real"].value, problem.value)
+            self.X_real = X_real
+            if status_LP == "infeasible":
+                self.status = hf.Status.INFEASIBLE
+            else:
+                X = np.round(X_real)
+                LB = val
+                s = self.vp["cap"] - X.sum(axis=1)
+                bare_cost = int(self.vp["c"].T @ X.sum(axis=1))
+                vp = self.vp
+                over_flow = -s
+                over_cap_count = np.sum(np.max( [np.zeros(len(over_flow)), over_flow], axis=0))
+                cost = vp["gama"].value * bare_cost + vp["zeta"].value * over_cap_count
+                message = ""
+                if np.all(self.vp["B"] @ X == self.vp["H"]):
+                    if np.all(s >= 0):
+                        if abs(cost - LB) < BnB_biobj.Node.EPSI:
+                            status = hf.Status.OPTIMAL
+                        else:
+                            status = hf.Status.FEASIBLE
+                        over_cap_count = 0
+                    
+                    else:
+                        status = hf.Status.OVER_CAP
+                        over_cap_count = -np.sum(s[s<0])
+                else:
+                    message="rounding unsuccessful"
+                    status = hf.Status.BLANK
+                    cost = None
+                    over_cap_count = None
+                self.X = X
+                self.status = status
+                self.LB = LB
+                self.cost = cost
+                self.message = message
+                self.over_cap_count = over_cap_count
+        
+        def create_children(self):
+            a,k = np.unravel_index(np.argmax(np.abs(self.X - self.X_real)),self.X.shape) # najdlje od celega števila
+            val = self.X_real[a,k]
+            fl = int(np.floor(val))
+            ce = int(np.ceil(val))
+            ch1 = BnB.Node(self.p,self.vp,self.obj,list(self.constraints)+ [self.vp["X_real"][a,k] >= ce])
+            ch2 = BnB.Node(self.p,self.vp,self.obj,list(self.constraints)+ [self.vp["X_real"][a,k] <= fl])
+            self.children = [ch1,ch2]
+        
+        def __str__(self, level=0):
+            ret = "\t"*level+repr(self)+"\n"
+            if self.children is not None:
+                for child in self.children:
+                    ret += child.__str__(level+1)
+            return ret
+        
+        def __repr__(self) -> str:
+            return "{}, cost: {}, LB: {}".format(self.status, self.cost, self.LB)
+            
+        
+    def solve(p,timeout,mode="biobj",importance_factor=1e-6):
+        data = dai.init_from_graph(p.graph,p.demands)
+        if data is None:
+            status = hf.Status.BLANK
+            X = None
+            cost = None
+            res = Problem.Result(status, X, cost)
+            p.results[str(__class__)] = res
+            return res
+        if mode == "biobj":
+            _, _, _, _, vp, _, _,_, _,obj_biobj_LP,constraints_biobj_LP = data
+            vp["gama"].value = importance_factor
+            vp["zeta"].value = 1-importance_factor
+            
+            obj = obj_biobj_LP
+            constraints = constraints_biobj_LP
+        else:
+            _, _, _, _, vp, _, _,obj_LP, constraints_LP,_,_ = data
+            obj = obj_LP
+            constraints = constraints_LP
+        
+        node0 = BnB.Node(p,vp,obj,constraints)
+        
+        
+        todo = [node0]
+        node_UB = None
+        time1 = time.perf_counter()
+        while len(todo) > 0 and time.perf_counter()-time1 < timeout:
+            node = todo.pop(0)
+            node.evaluate(mode=mode)
+            
+            if node.status in [hf.Status.OPTIMAL, hf.Status.FEASIBLE]:
+                if node_UB is None or node_UB.cost > node.cost:
+                    node_UB = node
+                    
+            if node.status == hf.Status.OPTIMAL:
+                continue
+            elif node.status == hf.Status.INFEASIBLE:
+                continue
+            elif node_UB is not None and node.LB > node_UB.cost:
+                continue
+            
+            node.create_children()
+            ch1,ch2 = node.children
+            todo += [ch1,ch2]
+            
+        if mode == "biobj":
+            node_UB.cost = int(vp["c"].T @ node_UB.X.sum(axis=1))
+            over_flow = (node_UB.X.sum(axis=1) - vp["cap"])
+            node_UB.over_cap_count = np.sum(np.max( [np.zeros(len(over_flow)), over_flow], axis=0))
+            node_UB = None
+            
+        
+        print(node0)
+        if time.perf_counter()-time1 > timeout:
+            if node_UB is None:
+                res = Problem.Result(hf.Status.BLANK, None, None)
+                p.results[str(__class__)] = res
+                return res
+            else:
+                Problem.Result(hf.Status.FEASIBLE, node_UB.X, node_UB.cost, node_UB.message, node_UB.LB, node_UB.over_cap_count)
+                p.results[str(__class__)] = res
+                return res
+        else:
+            if node_UB is None:
+                res = Problem.Result(hf.Status.INFEASIBLE, None, None)
+                p.results[str(__class__)] = res
+                return res
+            else:
+                res = Problem.Result(hf.Status.OPTIMAL, node_UB.X, node_UB.cost, node_UB.message, None, node_UB.over_cap_count)
+                
+            
+            
+
+            
+            
+            
+            
+        

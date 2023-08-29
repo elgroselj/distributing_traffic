@@ -236,6 +236,8 @@ def dijkstra0(vp, graph, demands, alpha):
     
     # zLD = new_c.T @ np.sum(X,axis=1) - vp["lam"].T @ vp["cap"]
     zLD = (new_c@X.sum(axis=1))[0,0] - (vp["lam"] @ vp["cap"])[0]
+    if not isinstance(zLD, float):
+        zLD = float(zLD[0,0])
     # zLD = int(zLD[0])
     s = vp["cap"] - X.sum(axis=1).T
     

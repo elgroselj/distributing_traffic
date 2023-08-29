@@ -261,11 +261,12 @@ def demands_latex_cell(demands):
     l = []
     for num_k in set(num_k_s):
         num = num_k_s.count(num_k)
-        oblika="{}x{} ".format(num,num_k)
+        # oblika="{}x{} ".format(num,num_k)
+        oblika="{} vel. {} ".format(num,num_k)
         l.append(oblika)
     return hf.latex_cell(l)
 
-def get_basic_example(UPPER_COST = 10):
+def get_basic_example(UPPER_COST = 100):
     graph = nx.DiGraph(graph_title = "osn")
 
     graph.add_node(0,x=0,y=1)
@@ -290,15 +291,28 @@ def get_basic_example(UPPER_COST = 10):
     
     
     B = nx.incidence_matrix(graph,oriented=True).todense()
-    n,m = B.shape
-    t=2
+    print(B)
+    # n,m = B.shape
+    # t=2
     
-    M = np.tile(np.eye(m), t)
-    B_ = np.tile(B,(t,t))
+    # M = np.tile(np.eye(m), t)
+    # B_ = np.tile(B,(t,t))
     
-    A = np.row_stack([M,B_,-B_])
-    print(A)
-    print(hf.is_totally_unimodular(A))
+    # A = np.row_stack([M,B_,-B_])
+    # print(A)
+    # print(hf.is_totally_unimodular(A))
     
     return graph, demands
     
+def get_grid_graph(a,b):
+    graph = nx.DiGraph(nx.grid_2d_graph(a, b))
+    for x in range(a):
+        for y in range(b):
+            graph.nodes()[x,y]["x"] = x
+            graph.nodes()[x,y]["y"] = y
+            
+    # print(graph.nodes(data=True)[0,0])
+    return graph
+
+
+get_grid_graph(3,4)
