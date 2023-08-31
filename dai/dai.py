@@ -471,7 +471,8 @@ def init_from_graph(graph,demands):
     
     # spremenljivke
     vp["X"] = cp.Variable((m,t),integer=True)
-    MAX_VAR_SIZE = 2_000_000#1_000_000
+    MAX_VAR_SIZE = 2_000_000#900_000#1_000_000
+    print("size: ", vp["X"].size)
     if vp["X"].size > MAX_VAR_SIZE:
         print("size: ", vp["X"].size)
         return None

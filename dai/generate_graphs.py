@@ -213,10 +213,10 @@ def point_to_closest_node(point, graph):
     return closest_node
 
 
-def random_demands(graph,num_cars,repete_prob = 0):
+def random_demands(graph,num_cars,repeat_prob = 0):
     demands = []
     for car in range(num_cars):
-        if random.random() >= repete_prob:
+        if random.random() >= repeat_prob:
             O,D = random.sample(graph.nodes(),2)
         while True:
             try:
@@ -304,15 +304,20 @@ def get_basic_example(UPPER_COST = 100):
     
     return graph, demands
     
-def get_grid_graph(a,b):
-    graph = nx.DiGraph(nx.grid_2d_graph(a, b))
+def get_grid_graph(a,max_c,max_cap):
+    b=a
+    graph = nx.DiGraph(nx.grid_2d_graph(a, b),graph_title="mrezni_{}_{}_{}".format(a,max_c,max_cap))
     for x in range(a):
         for y in range(b):
             graph.nodes()[x,y]["x"] = x
             graph.nodes()[x,y]["y"] = y
             
+    nx.set_edge_attributes(graph,{e:max_c for e in list(graph.edges())},name = "c")
+    nx.set_edge_attributes(graph,{e:max_cap for e in list(graph.edges())},name = "cap")
+    
+    graph,_ = relabel(graph, [])
     # print(graph.nodes(data=True)[0,0])
     return graph
 
 
-get_grid_graph(3,4)
+# get_grid_graph(3,4)

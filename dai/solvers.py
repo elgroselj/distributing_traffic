@@ -329,14 +329,20 @@ class Descent:
         message = ""
         over_cap_count = None
         if len(feasible) == 0:
-            best_evaluated = min(evaluated, key= lambda node: (node.over_cap_count,node.cost))
-            best_evaluated_improved = Descent.lower_the_cost(best_evaluated,feasible,allowed_over_cap_count=best_evaluated.over_cap_count)
-            # status = "no_feas"
-            status = hf.Status.OVER_CAP
-            X = best_evaluated_improved.X
-            cost = best_evaluated_improved.cost
-            # message = "over_cap_count: {}".format(best_evaluated_improved.over_cap_count)
-            over_cap_count = best_evaluated_improved.over_cap_count
+            if len(evaluated) != 0:
+                best_evaluated = min(evaluated, key= lambda node: (node.over_cap_count,node.cost))
+                best_evaluated_improved = Descent.lower_the_cost(best_evaluated,feasible,allowed_over_cap_count=best_evaluated.over_cap_count)
+                # status = "no_feas"
+                status = hf.Status.OVER_CAP
+                X = best_evaluated_improved.X
+                cost = best_evaluated_improved.cost
+                # message = "over_cap_count: {}".format(best_evaluated_improved.over_cap_count)
+                over_cap_count = best_evaluated_improved.over_cap_count
+            else:
+                status = hf.Status.BLANK
+                X = None
+                cost = None
+                over_cap_count = None
         else:
             best_feasible_node = min(feasible, key= lambda node: node.cost)
             if best_feasible_node.cost == LB:
@@ -607,9 +613,9 @@ class Optimal_cvxpy:
         
         else:
             if SOLVER == "CBC":
-                problem.solve(verbose=True,solver=SOLVER, maximumSeconds=timeout)
+                problem.solve(verbose=Problem.verbose,solver=SOLVER, maximumSeconds=timeout)
             else:
-                problem.solve(verbose=True,solver=SOLVER)
+                problem.solve(verbose=Problem.verbose,solver=SOLVER)
      
       
         ###########################################333
@@ -668,9 +674,19 @@ class LP_relaxation:
         # _, constraints, _, constraints_ex_additional, vp, obj_opt  = dai.init_from_graph(p.graph,p.demands)
         problem = cp.Problem(obj_LP, constraints_LP)
         #####################################33
-        problem.solve(verbose=True,solver=SOLVER)       
+        problem.solve(verbose=Problem.verbose,solver=SOLVER)       
         ###########################################333
         status_LP, X_real, val = (problem.status, vp["X_real"].value, problem.value)
+        
+        
+        # X_ceil = np.round(X_real)
+        # # hf.plot_solution_graph(p.graph, X_ceil, with_labels=False, with_arrows=False, font_size=0, figure_size=(5,5), node_size=12, demands=p.demands)
+        
+        # res = Problem.Result(None, X_ceil, None)
+        # p.results[str(__class__)] = res
+        # return res
+        
+        
         message = "val: {}".format(val)
         if status_LP == "infeasible":
             # status = "infeasible"
@@ -739,7 +755,7 @@ class Biobjective:
         
         vp["gama"].value = importance_factor
         vp["zeta"].value = 1 - importance_factor
-        problem.solve(verbose=True,solver=SOLVER,allowableGap=importance_factor/10)
+        problem.solve(verbose=Problem.verbose,solver=SOLVER,allowableGap=importance_factor/10)
         
         
         X = vp["X"].value
@@ -801,7 +817,7 @@ class Biobjective_LP:
         
         vp["gama"].value = importance_factor
         vp["zeta"].value = 1 - importance_factor
-        problem.solve(verbose=True,solver=SOLVER)
+        problem.solve(verbose=Problem.verbose,solver=SOLVER)
         
         
         X_real = vp["X_real"].value
@@ -866,6 +882,7 @@ class DnC:
                 demandsR.append((O,D,num_k))
             else:
                 demands_remaining.append((O,D,num_k))
+        print(len(demandsL),len(demandsR),len(demands_remaining))
         return demandsL,demandsR,demands_remaining
                 
             
@@ -975,7 +992,7 @@ class BnB:
             #     sys.stdout = save_stdout
             
         
-            problem.solve(verbose=True,solver="GLOP")       
+            problem.solve(verbose=Problem.verbose,solver="GLOP")       
         ###########################################333
             status_LP, X_real, val = (problem.status, self.vp["X_real"].value, problem.value)
             self.X_real = X_real
@@ -1104,7 +1121,7 @@ class BnB_biobj:
             #     sys.stdout = save_stdout
             
         
-            problem.solve(verbose=True,solver="GLOP")       
+            problem.solve(verbose=Problem.verbose,solver="GLOP")       
         ###########################################333
             status_LP, X_real, val = (problem.status, self.vp["X_real"].value, problem.value)
             self.X_real = X_real

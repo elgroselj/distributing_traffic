@@ -13,6 +13,10 @@ import node
 import importlib
 importlib.reload(node)
 
+
+ang_to_slo ={"Biobjective":"dvokrit. RiOb", "Optimal_cvxpy":"RiOb", "LP_relaxation":"LP", "Dai3_solver":"LR","DnC":"'DiV'", "Descent":"sest.",
+             "Keep_feasible_shuffle":"požrešna","Biobjective_LP":"dvokrit. LP","BnB":"RiOm"}
+
 class Status(Enum):
     BLANK = 0
     OPTIMAL = 1
@@ -35,28 +39,43 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with
             pos = nx.planar_layout(G)
         except:
             pos = nx.circular_layout(G)
+            for node in pos:
+                G.nodes[node]["x"] = pos[node][0]
+                G.nodes[node]["y"] = pos[node][1]
+                
             # pos = nx.spring_layout(G)
     if demands is None:
         nx.draw_networkx_nodes(G, pos, node_size=node_size,alpha=0.2)
     else:
         node_sizes = []
         node_colors = []
+        node_shapes = []
         alphas = []
         for node in G.nodes():
-            l = [(k,num_k) for k,(O,D,num_k) in enumerate(demands) if node in [O,D]]
+            # s
+            lO = [(k,num_k,"O") for k,(O,D,num_k) in enumerate(demands) if node == O]
+            lD = [(k,num_k,"D") for k,(O,D,num_k) in enumerate(demands) if node == D]
+            l = lO + lD
             if len(l) == 0:
                 node_sizes.append(node_size)
                 node_colors.append("k")
+                node_shapes.append("o")
                 alphas.append(0.2)
             else:
-                k, end_node_size_add = max(l,key = lambda x: x[1])
+                k, end_node_size_add, OD = max(l,key = lambda x: x[1])
                 # end_node_color = COLORS[k%len(COLORS)]
                 end_node_color = k_to_color(k,len(demands))
                 
-                node_sizes.append(end_node_size_add* (node_size+2)*4)
+                node_sizes.append(end_node_size_add* (node_size+2)*6)
                 node_colors.append(end_node_color)
+                node_shapes.append("o" if OD == "O" else "s")
                 alphas.append(0.5)
-        nx.draw_networkx_nodes(G, pos, node_size=node_sizes,node_color=node_colors,alpha=alphas)
+            nx.draw_networkx_nodes(G, nodelist=[node], pos=pos, node_size=node_sizes[-1],node_color=np.array([node_colors[-1]]),alpha=alphas[-1],node_shape=node_shapes[-1])
+        # for 
+        # mask = np.array([shape == "o" for shape in node_shapes])
+        # nx.draw_networkx_nodes(G, np.array(pos)[mask], node_size=np.array(node_sizes)[mask],node_color=np.array(node_colors)[mask],alpha=np.array(alphas)[mask],node_marker="o")
+        # nx.draw_networkx_nodes(G, np.array(pos)[~mask], node_size=np.array(node_sizes)[~mask],node_color=np.array(node_colors)[~mask],alpha=np.array(alphas)[~mask],node_marker="s")
+        # # nx.draw_networkx_nodes(G, pos, node_size=node_sizes,node_color=node_colors,alpha=alphas,node_marker=node_shapes)
     nx.draw_networkx_labels(G, pos, font_size=font_size)
     ax = plt.gca()
     for e in G.edges:
@@ -67,6 +86,12 @@ def plot_multigraph(graph, with_labels=True,font_size=5,figure_size=(20,20),with
             linewidth = 2
         else:
             linewidth = 1
+            
+            
+        # if edge_color == "k":
+        #     continue
+        
+        
         ax.annotate("",
                     xy=pos[e[1]], xycoords='data',
                     xytext=pos[e[0]], textcoords='data',

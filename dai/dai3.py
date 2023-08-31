@@ -116,7 +116,7 @@ class Node:
             # print(s[:,[0,6]])
             # print(s)
             # print(self.vp["lam"])           
-            # hf.plot_solution_graph(self.graph,X,edge_label1="alt_c",font_size=12,demands=demands,node_size=150,figure_size=(5,5))
+            # hf.plot_solution_graph(self.graph,X,edge_label1="alt_c",font_size=12,demands=demands,node_size=100,figure_size=(5,5))
             # X, status, zLD, s = ss.astar(self.vp, graph, demands, alpha)
             lams.append(np.copy(self.vp["lam"]))
             ###############################################
