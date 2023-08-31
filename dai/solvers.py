@@ -21,7 +21,6 @@ from scipy.optimize import linprog
 import helper_functions as hf
 
 import dai
-import dai2
 import dai3
 
 class Descent:

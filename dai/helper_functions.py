@@ -9,9 +9,9 @@ from collections import Counter, OrderedDict
 # COLORS="brgymc"
 # COLORS=plt.cm.Spectral(range(10))
 
-import node
-import importlib
-importlib.reload(node)
+# import dai.archive.node as node
+# import importlib
+# importlib.reload(node)
 
 
 ang_to_slo ={"Biobjective":"dvokrit. RiOb", "Optimal_cvxpy":"RiOb", "LP_relaxation":"LP", "Dai3_solver":"LR","DnC":"'DiV'", "Descent":"sest.",
